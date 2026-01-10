@@ -1,0 +1,7 @@
+export const ORDER_STATUS = {
+    PLACED: "PLACED",
+    PREPARING: "PREPARING",
+    READY: "READY",
+    //SERVED: "SERVED",
+    COMPLETED: "COMPLETED"
+};

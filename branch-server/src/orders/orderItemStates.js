@@ -1,0 +1,6 @@
+export const ORDER_ITEM_STATUS = {
+    PENDING: "PENDING",
+    PREPARING: "PREPARING",
+    READY: "READY",
+    SERVED: "SERVED",
+};

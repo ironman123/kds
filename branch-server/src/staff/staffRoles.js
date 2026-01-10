@@ -1,0 +1,7 @@
+export const STAFF_ROLE = {
+    WAITER: "WAITER",
+    KITCHEN: "KITCHEN",
+    CAPTAIN: "CAPTAIN",
+    MANAGER: "MANAGER",
+    OWNER: "OWNER",
+};
