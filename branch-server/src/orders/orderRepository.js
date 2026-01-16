@@ -1,10 +1,9 @@
 import db from "../db.js";
 
-export function insertOrder(order)
-{
+export function insertOrder(order) {
   const stmt = db.prepare(`
-    INSERT INTO orders (id, table_id, waiter_id, status, serve_policy, created_at, updated_at, customer_name, customer_phone)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO orders (id, table_id, waiter_id, status, serve_policy, created_at, updated_at, customer_name, customer_phone, branch_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run(
@@ -16,19 +15,18 @@ export function insertOrder(order)
     order.createdAt,
     order.updatedAt,
     order.customerName,
-    order.customerPhone
+    order.customerPhone,
+    order.branchId
   );
 }
 
-export function getOrderByIdRepo(orderId)
-{
+export function getOrderByIdRepo(orderId) {
   return db
     .prepare(`SELECT * FROM orders WHERE id = ?`)
     .get(orderId);
 }
 
-export function updateOrderStatus(orderId, newStatus, updatedAt)
-{
+export function updateOrderStatus(orderId, newStatus, updatedAt) {
   const now = Date.now();
   db.prepare(`
     UPDATE orders
@@ -37,8 +35,7 @@ export function updateOrderStatus(orderId, newStatus, updatedAt)
   `).run(newStatus, now, orderId);
 }
 
-export function countUnservedItemsForTable(tableId)
-{
+export function countUnservedItemsForTable(tableId) {
   return db.prepare(`
     SELECT COUNT(*) as count
     FROM order_items oi
@@ -48,18 +45,17 @@ export function countUnservedItemsForTable(tableId)
   `).get(tableId).count;
 }
 
-export function getActiveOrdersRepo()
-{
+export function getActiveOrdersRepo(branchId) {
   return db.prepare(`
     SELECT *
     FROM orders
     WHERE status NOT IN ('COMPLETED', 'CANCELLED')
+      AND branch_id = ?
     ORDER BY created_at ASC
-  `).all();
+  `).all(branchId);
 }
 
-export function getOrdersForTableRepo(tableId)
-{
+export function getOrdersForTableRepo(tableId) {
   return db.prepare(`
     SELECT *
     FROM orders

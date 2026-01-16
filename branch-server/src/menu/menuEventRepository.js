@@ -1,19 +1,15 @@
 import db from "../db.js";
 
-export function logMenuEvent(event)
+export async function logMenuEvent(event)
 {
-    db.prepare(`
-    INSERT INTO menu_events
-    (id, entity_type, entity_id, event_type, old_value, new_value, actor_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-        event.id,
-        event.entityType,
-        event.entityId,
-        event.type,
-        event.oldValue,
-        event.newValue,
-        event.actorId,
-        event.createdAt
-    );
+    await db('menu_events').insert({
+        id: event.id,
+        entity_type: event.entityType,
+        entity_id: event.entityId,
+        event_type: event.type,
+        old_value: event.oldValue ? String(event.oldValue) : null,
+        new_value: event.newValue ? String(event.newValue) : null,
+        actor_id: event.actorId || 'SYSTEM',
+        created_at: event.createdAt
+    });
 }

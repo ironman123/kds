@@ -3,6 +3,7 @@ import { ORDER_STATUS } from "./orderStates.js";
 import { ALLOWED_TRANSITIONS } from "./orderTransitions.js";
 import { insertOrder, getOrderByIdRepo, getOrdersForTableRepo, updateOrderStatus, getActiveOrdersRepo } from "./orderRepository.js";
 import { logOrderEvent } from "./orderEventRepository.js";
+import { assertBranchExists } from "../infra/branchService.js";
 
 import { countItemsForOrder } from "./orderItemRepository.js";
 
@@ -11,11 +12,17 @@ import { markTableOccupied, markTableFree, assertTableFree } from '../tables/tab
 //import { getOrderItemsForOrder } from "./orderItemRepository.js";
 import { deriveOrderState } from "./deriveOrderState.js";
 
-export function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", customerName = null, customerPhone = null })
-{
+export function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", customerName = null, customerPhone = null, branchId }) {
     const now = Date.now();
     const orderId = crypto.randomUUID();
+
+    if (!branchId) {
+        throw new Error("Branch ID is required");
+    }
+
+    assertBranchExists(branchId);
     assertTableFree(tableId);
+
     const order = {
         id: orderId,
         tableId,
@@ -25,11 +32,12 @@ export function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", custom
         createdAt: now,
         updatedAt: now,
         customerName,
-        customerPhone
+        customerPhone,
+        branchId,
     };
 
     insertOrder(order);
-    markTableOccupied(tableId);
+    markTableOccupied(tableId, branchId);
 
     logOrderEvent({
         id: crypto.randomUUID(),
@@ -44,8 +52,7 @@ export function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", custom
     return order;
 }
 
-export function getOrderById(orderId)
-{
+export function getOrderById(orderId) {
     const order = getOrderByIdRepo(orderId);
     if (!order) return null;
 
@@ -55,9 +62,12 @@ export function getOrderById(orderId)
     };
 }
 
-export function getActiveOrders()
-{
-    const orders = getActiveOrdersRepo();
+export function getActiveOrders(branchId) {
+    if (!branchId) {
+        throw new Error("Branch ID is required");
+    }
+
+    const orders = getActiveOrdersRepo(branchId);
 
     return orders.map(order => ({
         ...order,
@@ -65,8 +75,7 @@ export function getActiveOrders()
     }));
 }
 
-export function getOrdersForTable(tableId)
-{
+export function getOrdersForTable(tableId) {
     const orders = getOrdersForTableRepo(tableId);
 
     return orders.map(order => ({

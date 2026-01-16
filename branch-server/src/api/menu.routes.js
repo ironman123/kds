@@ -1,318 +1,326 @@
 import express from "express";
-
 import
 {
     createCategory,
-    changeCategoryAvailability,
-    updateCategory,
     listCategories,
     listPublicCategories,
+    updateCategoryDetails,
+    changeCategoryAvailability,
+    deleteCategory,
+    createCategoryForBranches,
+    updateCategoryForBranches,
+    deleteCategoryForBranches
 } from "../menu/menuCategoryService.js";
-
 import
 {
-    createMenuItemWithRecipe,
-    changeMenuItemPrice,
-    setMenuItemAvailability,
-    updateMenuItem,
-    moveMenuItem,
+    createMenuItem,
     listMenuItems,
     listPublicMenuItems,
-    getMenuItemById,
+    updateMenuItemDetails,
+    deleteMenuItem,
+    createMenuItemForBranches,
+    updateMenuItemForBranches,
+    deleteMenuItemForBranches,
+    moveMenuItemForBranches
 } from "../menu/menuItemService.js";
-
 import
 {
-    getRecipeForMenuItem,
-    addIngredient,
-    changeIngredientQuantity,
-    removeIngredient,
+    getRecipeDetails,
     editRecipe,
-    listIngredientsForMenuItem
+    updateRecipeForBranches
 } from "../menu/recipeService.js";
-
+//import { requireAuth } from "../auth/authMiddleware.js"; // Your Auth Middleware
 
 const router = express.Router();
 
-/* =======================
-   CATEGORY ROUTES
-======================= */
+// Apply Auth globally to all menu routes
+//router.use(requireAuth);
 
-// Create category
-router.post("/categories", (req, res) =>
+/* ============================================================
+   SECTION 1: CATEGORIES
+============================================================ */
+// --- Batch Operations (Owner Only) ---
+router.post("/categories/batch", async (req, res) =>
 {
     try
     {
-        res.json(createCategory({
-            name: req.body.name,
-            sortOrder: req.body.sortOrder,
-            actorId: req.body.actorId,
-        }));
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
-});
-
-// Update category metadata
-router.patch("/categories/:id", (req, res) =>
-{
-    try
-    {
-        updateCategory({
-            categoryId: req.params.id,
-            newName: req.body.name,
-            newSortOrder: req.body.sortOrder,
-            actorId: req.body.actorId,
+        // Service will throw error if actorId is not OWNER
+        const result = await createCategoryForBranches({
+            ...req.body,
+            actorId: req.context.actorId
         });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        res.status(201).json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Toggle category availability
-router.post("/categories/:id/availability", (req, res) =>
+router.patch("/categories/batch", async (req, res) =>
+{
+    console.log("Cat Batch Update")
+    try
+    {
+        const result = await updateCategoryForBranches({
+            ...req.body,
+            actorId: req.context.actorId
+        });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete("/categories/batch", async (req, res) =>
 {
     try
     {
-        changeCategoryAvailability({
+        const result = await deleteCategoryForBranches({
+            ...req.body,
+            actorId: req.context.actorId
+        });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// --- Public / POS View (Available Only) ---
+router.get("/categories/public", async (req, res) =>
+{
+    try
+    {
+        // branchId comes from header (via Middleware context)
+        const result = await listPublicCategories({ branchId: req.context.branchId });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// --- Admin View (All Categories including hidden) ---
+router.get("/categories", async (req, res) =>
+{
+    try
+    {
+        const result = await listCategories({ branchId: req.context.branchId });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// --- Single Operations (Manager/Owner) ---
+router.post("/categories", async (req, res) =>
+{
+    try
+    {
+        const result = await createCategory({
+            ...req.body,
+            actorId: req.context.actorId,
+            branchId: req.context.branchId
+        });
+        res.status(201).json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.patch("/categories/:id", async (req, res) =>
+{
+    try
+    {
+        const result = await updateCategoryDetails({
+            categoryId: req.params.id,
+            ...req.body,
+            actorId: req.context.actorId,
+            branchId: req.context.branchId
+        });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.patch("/categories/:id/availability", async (req, res) =>
+{
+    try
+    {
+        const result = await changeCategoryAvailability({
             categoryId: req.params.id,
             available: req.body.available,
-            actorId: req.body.actorId,
+            actorId: req.context.actorId,
+            branchId: req.context.branchId
         });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// List categories (admin)
-router.get("/categories", (req, res) =>
+router.delete("/categories/:id", async (req, res) =>
 {
     try
     {
-        res.json(listCategories({
-            actorId: req.query.actorId
-        }));
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        await deleteCategory({
+            categoryId: req.params.id,
+            actorId: req.context.actorId,
+            branchId: req.context.branchId
+        });
+        res.sendStatus(204);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 
-// List categories (public)
-router.get("/categories/public", (req, res) =>
-{
-    res.json(listPublicCategories());
-});
 
-/* =======================
-   MENU ITEM ROUTES
-======================= */
 
-// Create item with recipe
-router.post("/items", (req, res) =>
+/* ============================================================
+   SECTION 2: MENU ITEMS
+============================================================ */
+// --- Batch Operations (Owner Only) ---
+router.post("/items/batch", async (req, res) =>
 {
     try
     {
-        res.json(createMenuItemWithRecipe({
-            categoryId: req.body.categoryId,
-            name: req.body.name,
-            price: req.body.price,
-            prepTime: req.body.prepTime,
-            recipeInstructions: req.body.recipeInstructions,
-            ingredients: req.body.ingredients,
-            actorId: req.body.actorId,
-        }));
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        const result = await createMenuItemForBranches({
+            ...req.body,
+            actorId: req.context.actorId
+        });
+        res.status(201).json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Update menu item metadata
-router.patch("/items/:id", (req, res) =>
+router.patch("/items/batch", async (req, res) =>
 {
     try
     {
-        updateMenuItem({
+        const result = await updateMenuItemForBranches({
+            ...req.body,
+            actorId: req.context.actorId
+        });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Smart Move (Batch Move Categories)
+router.post("/items/batch/move", async (req, res) =>
+{
+    try
+    {
+        const result = await moveMenuItemForBranches({
+            ...req.body,
+            actorId: req.context.actorId
+        });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete("/items/batch", async (req, res) =>
+{
+    try
+    {
+        const result = await deleteMenuItemForBranches({
+            ...req.body,
+            actorId: req.context.actorId
+        });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+
+// --- Public / POS View ---
+router.get("/items/public", async (req, res) =>
+{
+    try
+    {
+        const result = await listPublicMenuItems({ branchId: req.context.branchId });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// --- Admin View ---
+router.get("/items", async (req, res) =>
+{
+    try
+    {
+        const result = await listMenuItems({ branchId: req.context.branchId });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// --- Single Operations (Manager/Owner) ---
+router.post("/items", async (req, res) =>
+{
+    try
+    {
+        const result = await createMenuItem({
+            ...req.body,
+            actorId: req.context.actorId,
+            branchId: req.context.branchId
+        });
+        res.status(201).json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.patch("/items/:id", async (req, res) =>
+{
+    try
+    {
+        const result = await updateMenuItemDetails({
             itemId: req.params.id,
-            name: req.body.name,
-            prepTime: req.body.prepTime,
-            actorId: req.body.actorId,
+            updates: req.body,
+            actorId: req.context.actorId,
+            branchId: req.context.branchId
         });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Update price
-router.post("/items/:id/price", (req, res) =>
+router.delete("/items/:id", async (req, res) =>
 {
     try
     {
-        changeMenuItemPrice({
+        await deleteMenuItem({
             itemId: req.params.id,
-            newPrice: req.body.price,
-            actorId: req.body.actorId,
+            actorId: req.context.actorId,
+            branchId: req.context.branchId
         });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        res.sendStatus(204);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Toggle item availability
-router.post("/items/:id/availability", (req, res) =>
+
+
+/* ============================================================
+   SECTION 3: RECIPES
+============================================================ */
+
+// --- Batch Operation (Owner Only) ---
+// Used to standardize recipes across branches
+router.put("/items/recipe/batch", async (req, res) =>
 {
     try
     {
-        setMenuItemAvailability({
-            itemId: req.params.id,
-            available: req.body.available,
-            actorId: req.body.actorId,
+        const result = await updateRecipeForBranches({
+            ...req.body,
+            actorId: req.context.actorId
         });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Move item to another category
-router.post("/items/:id/move", (req, res) =>
+// --- Get Recipe Details ---
+router.get("/items/:itemId/recipe", async (req, res) =>
 {
     try
     {
-        moveMenuItem({
-            itemId: req.params.id,
-            categoryId: req.body.categoryId,
-            actorId: req.body.actorId,
+        const result = await getRecipeDetails({
+            menuItemId: req.params.itemId,
+            branchId: req.context.branchId
         });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// List items (admin)
-router.get("/items", (req, res) =>
-{
-    res.json(listMenuItems({
-        actorId: req.body.actorId
-    }));
-});
-
-// List items (public)
-router.get("/items/public", (req, res) =>
-{
-    res.json(listPublicMenuItems());
-});
-
-// Get single item (admin/debug)
-router.get("/items/:id", (req, res) =>
-{
-    const item = getMenuItemById(req.params.id);
-    if (!item) return res.status(404).json({ error: "Not found" });
-    res.json(item);
-});
-
-/* =======================
-   RECIPE & INGREDIENTS
-======================= */
-
-// Get recipe
-router.get("/items/:id/recipe", (req, res) =>
-{
-    res.json(getRecipeForMenuItem(req.params.id));
-});
-
-router.get("/items/:id/ingredients", (req, res) =>
-{
-    res.json(listIngredientsForMenuItem(req.params.id));
-});
-
-// Add ingredient
-router.post("/items/:id/ingredients", (req, res) =>
+// --- Single Operation (Edit Recipe) ---
+router.put("/items/:itemId/recipe", async (req, res) =>
 {
     try
     {
-        addIngredient({
-            menuItemId: req.params.id,
-            ingredient: req.body.ingredient,
-            quantity: req.body.quantity,
-            actorId: req.body.actorId,
+        // Handles Instructions + Ingredients (Add/Remove/Update/Replace)
+        const result = await editRecipe({
+            menuItemId: req.params.itemId,
+            ...req.body,
+            actorId: req.context.actorId,
+            branchId: req.context.branchId
         });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Update ingredient quantity
-router.patch("/ingredients/:ingredientId", (req, res) =>
-{
-    try
-    {
-        changeIngredientQuantity({
-            ingredientId: req.params.ingredientId,
-            menuItemId: req.body.menuItemId,
-            newQuantity: req.body.newQuantity,
-            actorId: req.body.actorId,
-        });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
-});
 
-// Remove ingredient
-router.delete("/ingredients/:ingredientId", (req, res) =>
-{
-    try
-    {
-        removeIngredient({
-            ingredientId: req.params.ingredientId,
-            menuItemId: req.body.menuItemId,
-            actorId: req.body.actorId,
-        });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
-});
-
-// Replace full recipe
-router.patch("/items/:id/recipe", (req, res) =>
-{
-    try
-    {
-        editRecipe({
-            menuItemId: req.params.id,
-            instructions: req.body.instructions,
-            addIngredients: req.body.addIngredients,
-            updateIngredients: req.body.updateIngredients,
-            removeIngredientIds: req.body.removeIngredientIds,
-            replaceAllIngredients: req.body.replaceAllIngredients,
-            actorId: req.body.actorId,
-        });
-        res.json({ ok: true });
-    } catch (e)
-    {
-        res.status(400).json({ error: e.message });
-    }
-});
 
 export default router;

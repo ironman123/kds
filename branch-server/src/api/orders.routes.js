@@ -1,17 +1,15 @@
 import express from "express";
 
-import
-{
-    createOrder,
-    getOrderById,
-    getActiveOrders,
-    getOrdersForTable,
+import {
+createOrder,
+getOrderById,
+getActiveOrders,
+getOrdersForTable,
 } from "../orders/orderService.js";
 
-import
-{
-    addItemToOrder,
-    changeOrderItemStatus,
+import {
+addItemToOrder,
+changeOrderItemStatus,
 } from "../orders/orderItemService.js";
 
 const router = express.Router();
@@ -24,21 +22,19 @@ const router = express.Router();
  * Create a new order
  * waiter / captain only
  */
-router.post("/orders", (req, res) =>
-{
-    try
-    {
+router.post("/orders", (req, res) => {
+    try {
         const order = createOrder({
             tableId: req.body.tableId,
             waiterId: req.body.waiterId,
             servePolicy: req.body.servePolicy,
             customerName: req.body.customerName,
             customerPhone: req.body.customerPhone,
+            branchId: req.body.branchId,
         });
 
         res.json(order);
-    } catch (e)
-    {
+    } catch (e) {
         res.status(400).json({ error: e.message });
     }
 });
@@ -46,18 +42,14 @@ router.post("/orders", (req, res) =>
 /**
  * Get order by ID
  */
-router.get("/orders/:id", (req, res) =>
-{
-    try
-    {
+router.get("/orders/:id", (req, res) => {
+    try {
         const order = getOrderById(req.params.id);
-        if (!order)
-        {
+        if (!order) {
             return res.status(404).json({ error: "Order not found" });
         }
         res.json(order);
-    } catch (e)
-    {
+    } catch (e) {
         res.status(400).json({ error: e.message });
     }
 });
@@ -66,14 +58,14 @@ router.get("/orders/:id", (req, res) =>
  * Get all active (non-completed) orders
  * used by captain / kitchen / KDS
  */
-router.get("/orders", (req, res) =>
-{
-    try
-    {
-        const orders = getActiveOrders();
-        res.json(orders);
-    } catch (e)
-    {
+router.get("/orders", (req, res) => {
+    try {
+        const branchId = req.headers['x-branch-id'] || req.query.branchId;
+
+        if (!branchId) return res.status(400).json({ error: "Branch ID required" });
+
+        res.json(getActiveOrders(branchId));
+    } catch (e) {
         res.status(400).json({ error: e.message });
     }
 });
@@ -81,14 +73,11 @@ router.get("/orders", (req, res) =>
 /**
  * Get orders for a table
  */
-router.get("/tables/:tableId/orders", (req, res) =>
-{
-    try
-    {
+router.get("/tables/:tableId/orders", (req, res) => {
+    try {
         const orders = getOrdersForTable(req.params.tableId);
         res.json(orders);
-    } catch (e)
-    {
+    } catch (e) {
         res.status(400).json({ error: e.message });
     }
 });
@@ -101,10 +90,8 @@ router.get("/tables/:tableId/orders", (req, res) =>
  * Add item to order
  * waiter / captain only
  */
-router.post("/orders/:orderId/items", (req, res) =>
-{
-    try
-    {
+router.post("/orders/:orderId/items", (req, res) => {
+    try {
         const item = addItemToOrder({
             orderId: req.params.orderId,
             menuItemId: req.body.menuItemId,
@@ -114,8 +101,7 @@ router.post("/orders/:orderId/items", (req, res) =>
         });
 
         res.json(item);
-    } catch (e)
-    {
+    } catch (e) {
         res.status(400).json({ error: e.message });
     }
 });
@@ -124,10 +110,8 @@ router.post("/orders/:orderId/items", (req, res) =>
  * Change order item status
  * kitchen / captain
  */
-router.patch("/order-items/:itemId/status", (req, res) =>
-{
-    try
-    {
+router.patch("/order-items/:itemId/status", (req, res) => {
+    try {
         changeOrderItemStatus({
             itemId: req.params.itemId,
             newStatus: req.body.status,
@@ -135,8 +119,7 @@ router.patch("/order-items/:itemId/status", (req, res) =>
         });
 
         res.json({ ok: true });
-    } catch (e)
-    {
+    } catch (e) {
         res.status(400).json({ error: e.message });
     }
 });

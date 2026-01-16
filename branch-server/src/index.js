@@ -9,7 +9,7 @@ initSchema();
 
 const app = createServer();
 
-app.listen(config.PORT, () =>
+app.listen(config.PORT, '0.0.0.0', () =>
 {
     console.log(`Branch server running on port ${config.PORT}`);
 })

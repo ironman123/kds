@@ -1,127 +1,174 @@
 import db from "../db.js";
 
-export function insertCategory(category)
+/* ============================================================
+   READ OPERATIONS
+============================================================ */
+
+export async function getCategoryById(categoryId, branchId)
 {
-  db.prepare(`
-    INSERT INTO menu_categories
-    (id, name, sort_order, available, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(
-    category.id,
-    category.name,
-    category.sortOrder,
-    category.available ? 1 : 0,
-    category.createdAt,
-    category.updatedAt
+  const row = await db('menu_categories')
+    .where({ id: categoryId, branch_id: branchId })
+    .first();
+
+  return row ? mapRowToCategory(row) : null;
+}
+
+export async function getCategoryByName(name, branchId)
+{
+  const row = await db('menu_categories')
+    .whereRaw('LOWER(TRIM(name)) = LOWER(TRIM(?))', [name])
+    .andWhere({ branch_id: branchId })
+    .first();
+
+  return row ? mapRowToCategory(row) : null;
+}
+
+// 🔍 WHAT: Finds category IDs by name across multiple branches.
+// 🛡️ WHY:  Required for "Batch Create Item" & "Smart Move". 
+//          This was the missing function causing your error.
+export async function findCategoryIdsByName(name, branchIds)
+{
+  return db('menu_categories')
+    .select('id', 'branch_id')
+    .whereIn('branch_id', branchIds)
+    .andWhereRaw('LOWER(TRIM(name)) = LOWER(TRIM(?))', [name]);
+}
+
+export async function listCategoriesRepo(branchId, onlyAvailable = false)
+{
+  const query = db('menu_categories')
+    .where({ branch_id: branchId })
+    .orderBy('sort_order', 'asc');
+
+  if (onlyAvailable)
+  {
+    query.where({ available: 1 });
+  }
+
+  const rows = await query;
+  return rows.map(mapRowToCategory);
+}
+
+export async function countItemsInCategory(categoryId, branchId)
+{
+  const result = await db('menu_items')
+    .count('id as count')
+    .where({ category_id: categoryId })
+    // Strictly speaking, we trust the DB FK, but we could join to verify branch ownership if paranoid.
+    // For deletion checks, this is usually sufficient.
+    .first();
+
+  return result.count || 0;
+}
+
+// Helper to check safety across multiple branches (Batch Delete Safety)
+export async function checkItemsExistInCategoryName({ targetBranchIds, name })
+{
+  const result = await db('menu_items')
+    .join('menu_categories', 'menu_items.category_id', 'menu_categories.id')
+    .whereIn('menu_categories.branch_id', targetBranchIds)
+    .andWhereRaw('LOWER(menu_categories.name) = LOWER(?)', [name])
+    .count('menu_items.id as count')
+    .first();
+
+  return (result.count || 0) > 0;
+}
+
+/* ============================================================
+   WRITE OPERATIONS (Single)
+============================================================ */
+
+export async function insertCategory(category)
+{
+  await db('menu_categories').insert({
+    id: category.id,
+    name: category.name,
+    sort_order: category.sortOrder,
+    available: category.available ? 1 : 0,
+    branch_id: category.branchId, // Tenant Isolation
+    created_at: category.createdAt,
+    updated_at: category.updatedAt
+  });
+}
+
+export async function updateCategoryRepo(categoryId, branchId, updates)
+{
+  const dbUpdates = { updated_at: Date.now() };
+
+  if (updates.name !== undefined) dbUpdates.name = updates.name;
+  if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder;
+  if (updates.available !== undefined) dbUpdates.available = updates.available ? 1 : 0;
+
+  await db('menu_categories')
+    .where({ id: categoryId, branch_id: branchId })
+    .update(dbUpdates);
+}
+
+export async function deleteCategoryRepo(categoryId, branchId)
+{
+  return db('menu_categories')
+    .where({ id: categoryId, branch_id: branchId })
+    .del();
+}
+
+/* ============================================================
+   WRITE OPERATIONS (Batch)
+============================================================ */
+
+// 🚀 WHAT: Inserts multiple categories in one SQL call.
+export async function insertCategoriesBatch(categories)
+{
+  await db('menu_categories').insert(
+    categories.map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      sort_order: cat.sortOrder,
+      available: cat.available ? 1 : 0,
+      branch_id: cat.branchId,
+      created_at: cat.createdAt,
+      updated_at: cat.updatedAt
+    }))
   );
 }
 
-export function getActiveCategories()
+// 🚀 WHAT: Updates multiple categories by Name + Branch List.
+export async function updateCategoriesBatch({ targetBranchIds, name, updates })
 {
-  return db.prepare(`
-    SELECT *
-    FROM menu_categories
-    WHERE available = 1
-    ORDER BY sort_order ASC
-  `).all();
+  const dbUpdates = { updated_at: Date.now() };
+  if (updates.name) dbUpdates.name = updates.name;
+  if (updates.courseSequence !== undefined) dbUpdates.course_sequence = updates.courseSequence;
+  if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder;
+  if (updates.available !== undefined) dbUpdates.available = updates.available ? 1 : 0;
+
+  // "Update WHERE branch is in the list AND name matches the current name"
+  return await db('menu_categories')
+    .whereIn('branch_id', targetBranchIds)
+    .andWhereRaw('LOWER(name) = LOWER(?)', [name]) // Case-insensitive match
+    .update(dbUpdates);
 }
 
-export function getCategoryById(categoryId)
+// 🚀 WHAT: Deletes multiple categories by Name + Branch List.
+export async function deleteCategoriesBatch({ targetBranchIds, name })
 {
-  return db
-    .prepare(`SELECT * FROM menu_categories WHERE id = ?`)
-    .get(categoryId);
+  return await db('menu_categories')
+    .whereIn('branch_id', targetBranchIds)
+    .andWhereRaw('LOWER(name) = LOWER(?)', [name])
+    .del();
 }
 
-export function getCategoryByName(name)
+/* ============================================================
+   HELPER
+============================================================ */
+
+function mapRowToCategory(row)
 {
-  return db.prepare(`
-    SELECT * FROM menu_categories
-    WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
-    LIMIT 1
-  `).get(name);
-}
-
-export function updateCategoryActivity(categoryId, available)
-{
-  db.prepare(`
-    UPDATE menu_categories
-    SET available = ?, updated_at = ?
-    WHERE id = ?
-  `).run(available ? 1 : 0, Date.now(), categoryId);
-}
-
-export function updateCategoryRepo({ categoryId, newName, newSortOrder })
-{
-  const fields = [];
-  const values = [];
-
-  if (newName !== undefined)
-  {
-    fields.push("name = ?");
-    values.push(newName);
-  }
-
-  if (newSortOrder !== undefined)
-  {
-    fields.push("sort_order = ?");
-    values.push(newSortOrder);
-  }
-
-  if (fields.length === 0)
-  {
-    return; // nothing to update
-  }
-
-  // always update timestamp
-  fields.push("updated_at = ?");
-  values.push(Date.now());
-
-  // WHERE id = ?
-  values.push(categoryId);
-
-  const sql = `
-    UPDATE menu_categories
-    SET ${fields.join(", ")}
-    WHERE id = ?
-  `;
-
-  db.prepare(sql).run(...values);
-}
-
-
-export function listAllCategories()
-{
-  return db.prepare(`
-    SELECT * FROM menu_categories
-    ORDER BY sort_order ASC
-  `).all();
-}
-
-export function listEnabledCategories()
-{
-  return db.prepare(`
-    SELECT * FROM menu_categories
-    WHERE available = 1
-    ORDER BY sort_order ASC
-  `).all();
-}
-
-export function countItemsInCategory(categoryId)
-{
-  const row = db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM menu_items
-    WHERE category_id = ?
-  `).get(categoryId);
-
-  return row.count;
-}
-
-export function deleteCategoryRepo(categoryId)
-{
-  return db.prepare(`
-    DELETE FROM menu_categories
-    WHERE id = ?
-  `).run(categoryId);
+  return {
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sort_order,
+    available: row.available === 1,
+    branchId: row.branch_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
 }

@@ -13,7 +13,7 @@ import { logOrderEvent } from "./orderEventRepository.js";
 import { countUnservedItemsForTable } from "./orderRepository.js";
 import { markTableFree } from "../tables/tableService.js";
 
-import { assertStaffRole } from "../staff/staffService.js";
+import { assertStaffRole } from "../staff/staffRoles.js";
 import { STAFF_ROLE } from "../staff/staffRoles.js"
 
 export function addItemToOrder({ orderId, menuItemId, quantity, notes = "", actorId })
@@ -124,7 +124,7 @@ export function changeOrderItemStatus({ itemId, newStatus, actorId })
             if (remainingItems === 0)
             {
                 console.log("Setting table free");
-                markTableFree(order.table_id);
+                markTableFree(order.table_id, order.branch_id);
             }
         }
     }

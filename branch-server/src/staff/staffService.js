@@ -1,199 +1,202 @@
+// src/staff/staffService.js
 import crypto from "crypto";
-import { insertStaff, getStaffById, countStaff } from "./staffRepository.js";
-import { STAFF_ROLE } from "./staffRoles.js";
-import { STAFF_CREATION_RULES, ROLE_LEVEL } from "./staffCreationRules.js";
-import { logStaffEvent } from "./staffEventRepository.js";
-import { STAFF_REACTIVATION_RULES } from "./staffReactivationRules.js";
-
-
-export function createStaff({ name, role, actorId })
+import
 {
-    const staffCount = countStaff();
-    if (staffCount === 0)
+    insertStaff,
+    getStaffById,
+    getStaffByPhone,
+    updateStaffStatus,
+    updateStaffDetails,
+    updateStaffRole as repoUpdateStaffRole,
+    listStaffForBranch
+} from "./staffRepository.js";
+import { STAFF_STATUS, ALLOWED_STAFF_TRANSITIONS } from "./staffStates.js";
+import { logStaffEvent, STAFF_EVENT_TYPE } from "./staffEventRepository.js";
+import { STAFF_ROLE, assertStaffRole } from "./staffRoles.js";
+import { assertBranchExists } from "../infra/branchService.js";
+
+// Rank hierarchy: Higher number = Higher power
+const ROLE_RANK = {
+    [STAFF_ROLE.OWNER]: 100,
+    [STAFF_ROLE.MANAGER]: 80,
+    [STAFF_ROLE.CAPTAIN]: 50,
+    [STAFF_ROLE.WAITER]: 20,
+    [STAFF_ROLE.KITCHEN]: 20,
+    [STAFF_ROLE.HELPER]: 10
+};
+
+/* ============================================================
+   PRIVATE HELPERS
+============================================================ */
+async function getStaffOrThrow(staffId, branchId)
+{
+    const staff = await getStaffById(staffId, branchId);
+    if (!staff) throw new Error("Staff member not found in this branch");
+    return staff;
+}
+
+function assertHierarchy(actorRole, targetRole)
+{
+    if (ROLE_RANK[actorRole] <= ROLE_RANK[targetRole])
     {
-        if (role !== STAFF_ROLE.OWNER)
-        {
-            throw new Error("First staff must be  OWNER!");
-        }
-        const owner = {
-            id: crypto.randomUUID(),
-            name,
-            role: STAFF_ROLE.OWNER,
-            active: true,
-            createdAt: Date.now(),
-        }
-        insertStaff(owner);
-
-        logStaffEvent({
-            id: crypto.randomUUID(),
-            staffId: owner.id,
-            type: "CREATED",
-            oldValue: null,
-            newValue: STAFF_ROLE.OWNER,
-            actorId: null, // system bootstrap
-            createdAt: Date.now(),
-        });
-
-
-        return owner;
+        throw new Error("Permission Denied: You cannot modify someone with an equal or higher rank.");
     }
+}
 
-    const actor = getStaffById(actorId);
+/* ============================================================
+   CORE SERVICES
+============================================================ */
 
-    if (!actor || actor.active === 0)
+export async function createStaff({ name, role, phone, adhaarNumber, branchId, actorId })
+{
+    if (!branchId) throw new Error("Branch ID is required");
+    await assertBranchExists(branchId);
+
+    // 1. Authorization: Only Owner/Manager can hire
+    const actor = await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
+
+    // 2. Hierarchy Check: Manager cannot hire an Owner
+    assertHierarchy(actor.role, role);
+
+    // 3. Validation
+    if (await getStaffByPhone(phone))
     {
-        throw new Error("Actor not active or not found");
+        throw new Error("Staff with this phone number already exists");
     }
+    // (Add Adhaar uniqueness check here if needed)
 
-    const allowedRoles = STAFF_CREATION_RULES[actor.role];
-
-    if (!allowedRoles || !allowedRoles.includes(role))
-    {
-        throw new Error(`${actor.role} is not allowed to create ${role}`);
-    }
-
-    if (!Object.values(STAFF_ROLE).includes(role))
-    {
-        throw new Error("Invalid staff role");
-    }
-
+    // 4. Create
     const staff = {
         id: crypto.randomUUID(),
+        branchId,
         name,
         role,
-        active: true,
+        phone,
+        adhaarNumber,
+        status: STAFF_STATUS.ACTIVE,
         createdAt: Date.now(),
     };
 
-    insertStaff(staff);
+    await insertStaff(staff);
 
-    logStaffEvent({
-        id: crypto.randomUUID(),
+    // 5. Log
+    await logStaffEvent({
         staffId: staff.id,
-        type: "CREATED",
-        oldValue: null,
-        newValue: role,
-        actorId: actor.id,
-        createdAt: Date.now(),
+        eventType: STAFF_EVENT_TYPE.CREATED,
+        newValue: { name, role, phone }, // Log only non-sensitive initial data
+        actorId
     });
 
     return staff;
 }
 
-export function assertStaffRole(staffId, allowedRoles)
+export async function updateStaffProfile({ staffId, branchId, updates, actorId })
 {
-    const staff = getStaffById(staffId);
-    if (!staff || staff.active === 0)
+    const staff = await getStaffOrThrow(staffId, branchId);
+
+    // Auth: Only Owner/Manager OR the staff themselves can edit profile
+    if (staffId !== actorId)
     {
-        throw new Error("Staff not active or not found");
+        const actor = await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
+        // Optional: Managers shouldn't edit Owners' personal details
+        if (actor.role !== STAFF_ROLE.OWNER)
+        {
+            assertHierarchy(actor.role, staff.role);
+        }
     }
 
-    if (!allowedRoles.includes(staff.role))
+    if (staff.status === STAFF_STATUS.TERMINATED)
     {
-        throw new Error("Permission denied");
+        throw new Error("Cannot edit details of a terminated staff member.");
     }
 
-    return staff;
-}
+    // Update DB
+    await updateStaffDetails(staffId, branchId, updates);
 
-export function deactivateStaff({ staffId, actorId })
-{
-    const actor = getStaffById(actorId);
-    if (!actor || actor.active === 0)
-    {
-        throw new Error("Actor not active or not found");
-    }
-
-    if (![STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER].includes(actor.role))
-    {
-        throw new Error("Permission denied");
-    }
-
-    const staff = getStaffById(staffId);
-    if (!staff || staff.active === 0) throw new Error("Staff not active or not found");
-
-    if (ROLE_LEVEL[actor.role] <= ROLE_LEVEL[staff.role])
-    {
-        throw new Error("Cannot deactive staff with equal or higher role!!!")
-    }
-
-    updateStaffActive(staffId, false);
-
-    logStaffEvent({
-        id: crypto.randomUUID(),
-        staffId,
-        type: "DEACTIVATED",
-        oldValue: "ACTIVE",
-        newValue: "INACTIVE",
-        actorId,
-        createdAt: Date.now(),
+    // Log Event
+    await logStaffEvent({
+        staffId: staffId,
+        eventType: STAFF_EVENT_TYPE.PROFILE_UPDATED,
+        oldValue: null, // Storing "null" to save space, or calculate diff if needed
+        newValue: Object.keys(updates), // Log *what* fields changed
+        actorId
     });
+
+    return { ...staff, ...updates };
 }
 
-export function reactivateStaff({ staffId, actorId })
+export async function changeStaffStatus({ staffId, branchId, newStatus, actorId })
 {
-    const actor = getStaffById(actorId);
-    if (!actor || actor.active === 0)
+    const staff = await getStaffOrThrow(staffId, branchId);
+
+    // Optimization
+    if (staff.status === newStatus) return staff;
+
+    // 1. Authorization
+    const actor = await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
+
+    // 2. Hierarchy Check (e.g., Manager cannot Fire Owner)
+    assertHierarchy(actor.role, staff.role);
+
+    // 3. State Machine Validation
+    const validMoves = ALLOWED_STAFF_TRANSITIONS[staff.status];
+    if (!validMoves || !validMoves.includes(newStatus))
     {
-        throw new Error("Actor not active or not found");
+        throw new Error(`Invalid status change: '${staff.status}' -> '${newStatus}'`);
     }
 
-    const staff = getStaffById(staffId);
-    if (!staff)
-    {
-        throw new Error("Staff not found");
-    }
+    // 4. Update
+    await updateStaffStatus(staffId, branchId, newStatus);
 
-    if (staff.active === 1)
-    {
-        return; // already active, idempotent
-    }
-
-    const allowedRoles = STAFF_REACTIVATION_RULES[actor.role];
-    if (!allowedRoles || !allowedRoles.includes(staff.role))
-    {
-        throw new Error("Permission denied");
-    }
-
-    updateStaffActive(staffId, true);
-
-    logStaffEvent({
-        id: crypto.randomUUID(),
-        staffId,
-        type: "REACTIVATED",
-        oldValue: "INACTIVE",
-        newValue: "ACTIVE",
-        actorId,
-        createdAt: Date.now(),
+    // 5. Log
+    await logStaffEvent({
+        staffId: staffId,
+        eventType: STAFF_EVENT_TYPE.STATUS_CHANGED,
+        oldValue: staff.status,
+        newValue: newStatus,
+        actorId
     });
+
+    return { ...staff, status: newStatus };
 }
 
-export function changeStaffRole({ staffId, newRole, actorId })
+export async function changeStaffRole({ staffId, branchId, newRole, actorId })
 {
-    const actor = getStaffById(actorId);
-    if (!actor || actor.active === 0)
-    {
-        throw new Error("Actor not active or not found");
-    }
+    const staff = await getStaffOrThrow(staffId, branchId);
 
-    if (actor.role !== STAFF_ROLE.OWNER)
-    {
-        throw new Error("Only owner can change roles");
-    }
+    // 1. Authorization: STRICTLY OWNER ONLY
+    // Changing roles (Promotions) is a high-risk action.
+    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
 
-    const staff = getStaffById(staffId);
-    if (!staff) throw new Error("Staff not found");
+    if (staff.role === newRole) return staff;
 
-    updateStaffRole(staffId, newRole);
+    // 2. Update
+    // (Ensure you add 'updateStaffRole' to your Repository export!)
+    await repoUpdateStaffRole(staffId, branchId, newRole);
 
-    logStaffEvent({
-        id: crypto.randomUUID(),
-        staffId,
-        type: "ROLE_CHANGED",
+    // 3. Log
+    await logStaffEvent({
+        staffId: staffId,
+        eventType: "ROLE_CHANGED",
         oldValue: staff.role,
         newValue: newRole,
-        actorId,
-        createdAt: Date.now(),
+        actorId
     });
+
+    return { ...staff, role: newRole };
 }
 
+/* ============================================================
+   WRAPPERS (For convenience in Controller)
+============================================================ */
+
+export async function listActiveStaff(branchId)
+{
+    return listStaffForBranch(branchId, false);
+}
+
+export async function listAllStaffHistory(branchId)
+{
+    // Only Owners/Managers should likely see the full history including fired staff
+    return listStaffForBranch(branchId, true);
+}
