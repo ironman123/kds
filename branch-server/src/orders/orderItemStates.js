@@ -3,4 +3,5 @@ export const ORDER_ITEM_STATUS = {
     PREPARING: "PREPARING",
     READY: "READY",
     SERVED: "SERVED",
+    CANCELLED: "CANCELLED"
 };

@@ -1,18 +1,16 @@
 import db from "../db.js";
 
-export function logOrderItemEvent(event)
+export async function logOrderItemEvent(event)
 {
-    db.prepare(`
-    INSERT INTO order_events
-    (id, order_id, event_type, old_value, new_value, actor_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-        event.id,
-        event.orderId,
-        event.type,
-        event.oldValue,
-        event.newValue,
-        event.actorId,
-        event.createdAt
-    );
+    await db('order_item_events').insert({ // Changed table name to be specific (Recommended)
+        id: event.id,
+        branch_id: event.branchId,      // ✅ SYNC: Required
+        order_id: event.orderId,
+        order_item_id: event.itemId,    // ✅ LOGIC: Track which item changed
+        event_type: event.type,
+        old_value: event.oldValue ? String(event.oldValue) : null,
+        new_value: event.newValue ? String(event.newValue) : null,
+        actor_id: event.actorId || 'SYSTEM',
+        created_at: event.createdAt
+    });
 }

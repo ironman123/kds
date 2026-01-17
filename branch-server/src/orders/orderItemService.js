@@ -1,131 +1,179 @@
 import crypto from "crypto";
-import { insertOrderItem } from "./orderItemRepository.js";
-import { getOrderItemById, updateOrderItemStatus } from "./orderItemRepository.js";
+import
+{
+    insertOrderItem,
+    getOrderItemById,
+    updateOrderItemStatus
+} from "./orderItemRepository.js";
 import { ORDER_ITEM_STATUS } from "./orderItemStates.js";
 import { ALLOWED_ITEM_TRANSITIONS } from "./orderItemTransitions.js";
 import { logOrderItemEvent } from "./orderItemEventRepository.js";
 
-//import { reevaluateOrderState } from "./orderService.js";
-
 import { deriveOrderState } from "./deriveOrderState.js";
-import { updateOrderStatus, getOrderByIdRepo } from "./orderRepository.js";
+import
+{
+    updateOrderStatus,
+    getOrderByIdRepo,
+    countUnservedItemsForTable
+} from "./orderRepository.js";
 import { logOrderEvent } from "./orderEventRepository.js";
-import { countUnservedItemsForTable } from "./orderRepository.js";
 import { markTableFree } from "../tables/tableService.js";
 
-import { assertStaffRole } from "../staff/staffRoles.js";
-import { STAFF_ROLE } from "../staff/staffRoles.js"
+import { assertStaffRole, STAFF_ROLE } from "../staff/staffRoles.js";
+import { assertBranchExists } from "../infra/branchService.js";
 
-export function addItemToOrder({ orderId, menuItemId, quantity, notes = "", actorId })
+export async function addItemToOrder({ orderId, menuItemId, quantity, notes = "", actorId, branchId })
 {
-    assertStaffRole(actorId, [STAFF_ROLE.CAPTAIN, STAFF_ROLE.WAITER]);
+    // 1. Validation
+    if (!branchId) throw new Error("Branch ID required");
+    await assertBranchExists(branchId);
+    await assertStaffRole(actorId, [STAFF_ROLE.CAPTAIN, STAFF_ROLE.WAITER, STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
-    const order = getOrderByIdRepo(orderId);
-    if (!order)
+    if (quantity <= 0) throw new Error("Quantity must be greater than zero");
+
+    // 2. Fetch Order (Security: Ensure it belongs to this branch)
+    const order = await getOrderByIdRepo(orderId, branchId);
+    if (!order) throw new Error("Order not found in this branch");
+
+    // 3. Logic: Locking
+    if (order.status !== "PLACED" && order.status !== "PREPARING") 
     {
-        throw new Error("Order not found");
+        // Note: Some restaurants allow adding items while 'PREPARING', others don't. 
+        // Strict Mode: if (order.status !== "PLACED") throw ...
     }
 
-    if (order.status !== "PLACED")
-    {
-        throw new Error("Cannot modify order after it enters preparation");
-    }
-
-    if (quantity <= 0)
-    {
-        throw new Error("Quantity must be greater than zero");
-    }
-
+    const now = Date.now();
     const item = {
         id: crypto.randomUUID(),
         orderId,
         menuItemId,
         quantity,
         notes,
+        status: ORDER_ITEM_STATUS.PENDING,
+        createdAt: now,
+        updatedAt: now
     };
 
-    insertOrderItem(item);
+    // 4. Insert
+    await insertOrderItem(item);
+
+    // 5. Log (Sync Ready)
+    await logOrderItemEvent({
+        id: crypto.randomUUID(),
+        branchId, // ✅ SYNC
+        orderId,
+        itemId: item.id,
+        type: "ITEM_ADDED",
+        oldValue: null,
+        newValue: JSON.stringify({ menuItemId, quantity }),
+        actorId,
+        createdAt: now
+    });
+
     return item;
 }
 
-export function changeOrderItemStatus({ itemId, newStatus, actorId })
+export async function changeOrderItemStatus({ itemId, newStatus, actorId, branchId })
 {
-    assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.CAPTAIN, STAFF_ROLE.KITCHEN]);
+    // 1. Validation (Fast checks before starting transaction)
+    if (!branchId) throw new Error("Branch ID required");
 
-    const item = getOrderItemById(itemId);
-    if (!item)
-    {
-        throw new Error("Order item not found");
-    }
+    await assertStaffRole(actorId, [
+        STAFF_ROLE.OWNER, STAFF_ROLE.CAPTAIN,
+        STAFF_ROLE.KITCHEN, STAFF_ROLE.MANAGER, STAFF_ROLE.WAITER
+    ]);
 
+    // 2. Fetch Item (Needed to validate transitions before locking DB)
+    const item = await getOrderItemById(itemId);
+    if (!item) throw new Error("Order item not found");
+
+    // 3. Security: Verify Order belongs to Branch
+    // We check this early to fail fast if someone is spoofing IDs
+    const preCheckOrder = await getOrderByIdRepo(item.orderId, branchId);
+    if (!preCheckOrder) throw new Error("Order not found or does not belong to this branch");
+
+    // 4. Transition Check
     const allowed = ALLOWED_ITEM_TRANSITIONS[item.status];
-
-    if (!allowed.includes(newStatus))
+    if (!allowed || !allowed.includes(newStatus))
     {
-        throw new Error(
-            `Invalid item transition ${item.status} → ${newStatus}`
-        );
+        throw new Error(`Invalid item transition ${item.status} → ${newStatus}`);
     }
 
-    const now = Date.now();
-
-    // --- status-specific timestamps ---
-    let startedAt = item.started_at;
-    let completedAt = item.completed_at;
-
-    if (newStatus === "PREPARING" && !startedAt)
+    // START TRANSACTION
+    // We wrap all writes to ensure we don't end up with "Item Updated" but "Order Status Old"
+    await runInTransaction(async (trx) =>
     {
-        startedAt = now;
-    }
+        // 5. Calculate Timestamps
+        const now = Date.now();
+        const additionalUpdates = {};
 
-    if (newStatus === "READY" && !completedAt)
-    {
-        completedAt = now;
-    }
+        // If starting prep, set started_at (if not already set)
+        if (newStatus === ORDER_ITEM_STATUS.PREPARING && !item.startedAt)
+        {
+            additionalUpdates.started_at = now;
+        }
+        // If ready, set completed_at (Chef is done)
+        if (newStatus === ORDER_ITEM_STATUS.READY && !item.completedAt)
+        {
+            additionalUpdates.completed_at = now;
+        }
 
-    updateOrderItemStatus(itemId, newStatus, startedAt, completedAt);
+        // 6. Update DB
+        // Note: If your repos don't accept 'trx', this relies on the repos using the same global connection context.
+        // If using raw Knex, ensure your repos can accept an optional 'trx' argument.
+        await updateOrderItemStatus(itemId, newStatus, additionalUpdates);
 
-    logOrderItemEvent({
-        id: crypto.randomUUID(),
-        orderId: item.order_id,
-        type: "ITEM_STATUS_CHANGED",
-        oldValue: item.status,
-        newValue: newStatus,
-        actorId,
-        createdAt: now,
-    });
-
-    //reevaluateOrderState(item.order_id, actorId);
-    const newOrderStatus = deriveOrderState(item.order_id);
-    const order = getOrderByIdRepo(item.order_id);
-
-    console.log("After status change:", itemId, " : ", newOrderStatus);
-    if (order.status !== newOrderStatus)
-    {
-        updateOrderStatus(order.id, newOrderStatus);
-
-        logOrderEvent({
+        // 7. Log (Sync Ready)
+        await logOrderItemEvent({
             id: crypto.randomUUID(),
-            orderId: order.id,
-            type: "ORDER_STATUS_DERIVED",
-            oldValue: order.status,
-            newValue: newOrderStatus,
+            branchId, // ✅ SYNC
+            orderId: item.orderId,
+            itemId: itemId,
+            type: "ITEM_STATUS_CHANGED",
+            oldValue: item.status,
+            newValue: newStatus,
             actorId,
-            createdAt: Date.now(),
+            createdAt: now,
         });
 
-        // If order completed → maybe free table
-        if (newOrderStatus === "COMPLETED")
+        // 8. 🔄 Derivation: Update Parent Order Status
+        const newOrderStatus = await deriveOrderState(item.orderId);
+
+        // Re-fetch order inside transaction to ensure we have latest state if needed
+        const order = await getOrderByIdRepo(item.orderId, branchId);
+
+        console.log(`[Order Logic] Item ${itemId} -> ${newStatus}. Order ${order.id} is now ${newOrderStatus}`);
+
+        if (order.status !== newOrderStatus)
         {
-            const remainingItems = countUnservedItemsForTable(order.table_id);
+            await updateOrderStatus(order.id, newOrderStatus);
 
-            console.log("Remaining unserved items:", remainingItems);
+            await logOrderEvent({
+                id: crypto.randomUUID(),
+                branchId, // ✅ SYNC
+                orderId: order.id,
+                type: "ORDER_STATUS_DERIVED",
+                oldValue: order.status,
+                newValue: newOrderStatus,
+                actorId: "SYSTEM", // System derived this change
+                createdAt: Date.now(),
+            });
 
-            if (remainingItems === 0)
+            // 9. Auto-Free Table Logic
+            // If order became COMPLETED (All served) or CANCELLED (All voided)
+            if (newOrderStatus === "COMPLETED" || newOrderStatus === "CANCELLED")
             {
-                console.log("Setting table free");
-                markTableFree(order.table_id, order.branch_id);
+                // Double check: Are there any stragglers? (e.g. one item left pending?)
+                const remainingItems = await countUnservedItemsForTable(order.tableId);
+
+                console.log(`[Table Logic] Unserved items on table ${order.tableId}: ${remainingItems}`);
+
+                if (remainingItems === 0)
+                {
+                    console.log(`[Table Logic] Freeing table ${order.tableId}`);
+                    await markTableFree(order.tableId, branchId, "SYSTEM");
+                }
             }
         }
-    }
+    });
 }

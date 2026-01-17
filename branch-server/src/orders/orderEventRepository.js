@@ -1,18 +1,16 @@
+// src/orders/orderEventRepository.js
 import db from "../db.js";
 
-export function logOrderEvent(event)
+export async function logOrderEvent(event)
 {
-    db.prepare(`
-    INSERT INTO order_events
-    (id, order_id, event_type, old_value, new_value, actor_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-        event.id,
-        event.orderId,
-        event.type,
-        event.oldValue,
-        event.newValue,
-        event.actorId,
-        event.createdAt
-    );
+    await db('order_events').insert({
+        id: event.id,
+        branch_id: event.branchId, // ✅ SYNC: Required to track which branch this event belongs to
+        order_id: event.orderId,
+        event_type: event.type,
+        old_value: event.oldValue ? String(event.oldValue) : null, // Safely convert to string
+        new_value: event.newValue ? String(event.newValue) : null,
+        actor_id: event.actorId || 'SYSTEM', // Fallback for system-generated events
+        created_at: event.createdAt
+    });
 }
