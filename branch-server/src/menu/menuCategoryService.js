@@ -1,19 +1,19 @@
 import crypto from "crypto";
 import
-{
-    insertCategory,
-    getCategoryById,
-    getCategoryByName,
-    findCategoryIdsByName,
-    updateCategoryRepo,
-    listCategoriesRepo,
-    countItemsInCategory,
-    deleteCategoryRepo,
-    insertCategoriesBatch,
-    updateCategoriesBatch, // Ensure this is exported from Repo
-    deleteCategoriesBatch, // Ensure this is exported from Repo
-    checkItemsExistInCategoryName // Ensure this is exported from Repo
-} from "./menuCategoryRepository.js";
+    {
+        insertCategory,
+        getCategoryById,
+        getCategoryByName,
+        findCategoryIdsByName,
+        updateCategoryRepo,
+        listCategoriesRepo,
+        countItemsInCategory,
+        deleteCategoryRepo,
+        insertCategoriesBatch,
+        updateCategoriesBatch,
+        deleteCategoriesBatch,
+        checkItemsExistInCategoryName
+    } from "./menuCategoryRepository.js";
 import { STAFF_ROLE, assertStaffRole } from "../staff/staffRoles.js";
 import { assertBranchExists } from "../infra/branchService.js";
 import { logMenuEvent } from "./menuEventRepository.js";
@@ -68,6 +68,7 @@ export async function createCategory({ name, sortOrder, actorId, branchId })
 
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 ADD THIS
         entityType: "CATEGORY",
         entityId: category.id,
         type: "CREATED",
@@ -82,7 +83,6 @@ export async function createCategory({ name, sortOrder, actorId, branchId })
 
 export async function createCategoryForBranches({ name, sortOrder, targetBranchIds, actorId })
 {
-    // 1. Strict Auth: Only OWNERS can do multi-branch operations
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
 
     if (!targetBranchIds || targetBranchIds.length === 0)
@@ -90,28 +90,20 @@ export async function createCategoryForBranches({ name, sortOrder, targetBranchI
         throw new Error("Target branch IDs are required");
     }
 
-    // 1. VALIDATION CHECK: Does this category actually exist in the target branches?
+    // 1. VALIDATION CHECK
     const existingCategories = await findCategoryIdsByName(name, targetBranchIds);
 
-    // If the list is empty, it means this category name is wrong or doesn't exist in ANY target branch.
     if (existingCategories.length !== 0)
     {
-        throw new Error(`Category '${name}' already exists in any/all of the selected branches.`);
-    }
-
-    // Optional: You could also warn if it's missing in *some* branches
-    if (existingCategories.length < targetBranchIds.length)
-    {
-        // We can proceed, but let's log or note that some branches were skipped
-        console.warn(`Warning: Category '${name}' only found in ${existingCategories.length}/${targetBranchIds.length} branches.`);
+        throw new Error(`Category '${name}' already exists in one or more selected branches.`);
     }
 
     const now = Date.now();
     const categoriesToInsert = [];
     const eventsToLog = [];
-    console.log(name, sortOrder, targetBranchIds);
-    // 2. The "Loop": Prepare the data objects
-    for (const branchId of targetBranchIds)
+
+    // 2. Prepare Data
+    for (const bId of targetBranchIds)
     {
         const newId = crypto.randomUUID();
 
@@ -120,26 +112,25 @@ export async function createCategoryForBranches({ name, sortOrder, targetBranchI
             name,
             sortOrder: sortOrder ?? 0,
             available: true,
-            branchId,
+            branchId: bId,
             createdAt: now,
             updatedAt: now,
         });
 
-        // Granular logging: Log exactly which branch got created
         eventsToLog.push({
             id: crypto.randomUUID(),
+            branchId: bId, // 👈 ADD THIS (Critical for Batch Sync)
             entityType: "CATEGORY",
             entityId: newId,
             type: "CREATED_MULTI_BRANCH",
             oldValue: null,
-            newValue: JSON.stringify({ name, branchId }),
+            newValue: JSON.stringify({ name }),
             actorId,
             createdAt: now
         });
     }
 
-
-    // 3. The Transaction
+    // 3. Transaction
     await runInTransaction(async () =>
     {
         await insertCategoriesBatch(categoriesToInsert);
@@ -183,7 +174,6 @@ export async function getCategory({ categoryId, branchId })
 
 export async function updateCategoryDetails({ categoryId, name, sortOrder, actorId, branchId })
 {
-    console.log("Normal Update Called")
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
 
     const category = await getCategoryOrThrow(categoryId, branchId);
@@ -206,9 +196,9 @@ export async function updateCategoryDetails({ categoryId, name, sortOrder, actor
 
     await updateCategoryRepo(categoryId, branchId, changes);
 
-    // Insightful Log
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 ADD THIS
         entityType: "CATEGORY",
         entityId: categoryId,
         type: "DETAILS_UPDATED",
@@ -230,40 +220,42 @@ export async function updateCategoryForBranches({ name, updates, targetBranchIds
         throw new Error("Target branch IDs are required");
     }
 
-    // 1. VALIDATION CHECK: Does this category actually exist in the target branches?
+    // 1. VALIDATION: Find which branches actually have this category
     const existingCategories = await findCategoryIdsByName(name, targetBranchIds);
 
-    // If the list is empty, it means this category name is wrong or doesn't exist in ANY target branch.
     if (existingCategories.length === 0)
     {
         throw new Error(`Category '${name}' does not exist in any of the selected branches.`);
     }
 
-    // Optional: You could also warn if it's missing in *some* branches
     if (existingCategories.length < targetBranchIds.length)
     {
-        // We can proceed, but let's log or note that some branches were skipped
         console.warn(`Warning: Category '${name}' only found in ${existingCategories.length}/${targetBranchIds.length} branches.`);
     }
 
-    // Perform Update
+    // 2. Perform Update
     const affectedRows = await updateCategoriesBatch({
         targetBranchIds,
         name,
         updates
     });
 
-    // Insightful Log for Batch Operation
-    await logMenuEvent({
-        id: crypto.randomUUID(),
-        entityType: "CATEGORY",
-        entityId: "BATCH_OPERATION",
-        type: "BATCH_UPDATED",
-        oldValue: JSON.stringify({ name, targetBranches: targetBranchIds }),
-        newValue: JSON.stringify({ updates, affectedCount: affectedRows }),
-        actorId,
-        createdAt: Date.now()
-    });
+    // 3. Log per Branch (Better for Sync)
+    // We iterate over 'existingCategories' because those are the specific branches that got updated
+    for (const cat of existingCategories)
+    {
+        await logMenuEvent({
+            id: crypto.randomUUID(),
+            branchId: cat.branch_id, // 👈 ADD THIS: Log specifically for this branch
+            entityType: "CATEGORY",
+            entityId: cat.id,
+            type: "BATCH_UPDATED",
+            oldValue: name,
+            newValue: JSON.stringify(updates),
+            actorId,
+            createdAt: Date.now()
+        });
+    }
 
     return {
         ok: true,
@@ -283,6 +275,7 @@ export async function changeCategoryAvailability({ categoryId, available, actorI
 
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 ADD THIS
         entityType: "CATEGORY",
         entityId: categoryId,
         type: available ? "ACTIVATED" : "DEACTIVATED",
@@ -315,6 +308,7 @@ export async function deleteCategory({ categoryId, actorId, branchId })
 
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 ADD THIS
         entityType: "CATEGORY",
         entityId: categoryId,
         type: "DELETED",
@@ -331,44 +325,39 @@ export async function deleteCategoryForBranches({ name, targetBranchIds, actorId
 {
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
 
-    // 1. Safety Check: Do ANY of these categories have items?
+    // 1. Safety Check
     const hasItems = await checkItemsExistInCategoryName({ targetBranchIds, name });
-
     if (hasItems)
     {
         throw new Error(`Cannot delete category '${name}' because it contains items in one or more selected branches. Remove items first.`);
     }
 
-    // 1. VALIDATION CHECK: Does this category actually exist in the target branches?
+    // 2. Find branches containing the category
     const existingCategories = await findCategoryIdsByName(name, targetBranchIds);
 
-    // If the list is empty, it means this category name is wrong or doesn't exist in ANY target branch.
     if (existingCategories.length === 0)
     {
         throw new Error(`Category '${name}' does not exist in any of the selected branches.`);
     }
 
-    // Optional: You could also warn if it's missing in *some* branches
-    if (existingCategories.length < targetBranchIds.length)
-    {
-        // We can proceed, but let's log or note that some branches were skipped
-        console.warn(`Warning: Category '${name}' only found in ${existingCategories.length}/${targetBranchIds.length} branches.`);
-    }
-
-    // 2. Delete
+    // 3. Delete
     const deletedCount = await deleteCategoriesBatch({ targetBranchIds, name });
 
-    // 3. Log
-    await logMenuEvent({
-        id: crypto.randomUUID(),
-        entityType: "CATEGORY",
-        entityId: "BATCH_OPERATION",
-        type: "BATCH_DELETED",
-        oldValue: JSON.stringify({ name, targetBranches: targetBranchIds }),
-        newValue: JSON.stringify({ deletedCount }),
-        actorId,
-        createdAt: Date.now()
-    });
+    // 4. Log per Branch
+    for (const cat of existingCategories)
+    {
+        await logMenuEvent({
+            id: crypto.randomUUID(),
+            branchId: cat.branch_id, // 👈 ADD THIS
+            entityType: "CATEGORY",
+            entityId: cat.id,
+            type: "BATCH_DELETED",
+            oldValue: name,
+            newValue: "DELETED",
+            actorId,
+            createdAt: Date.now()
+        });
+    }
 
     return {
         ok: true,

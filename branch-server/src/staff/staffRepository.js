@@ -13,7 +13,9 @@ export async function insertStaff(staffData)
         adhaar_number: staffData.adhaarNumber,
         status: staffData.status,
         created_at: staffData.createdAt,
-        active: 1 // Legacy support if needed, otherwise ignore
+        updated_at: staffData.createdAt, // ✅ SYNC: Initialize updated_at
+        active: 1,
+        deleted_at: null // ✅ SYNC: Explicitly alive
     });
 }
 
@@ -22,6 +24,7 @@ export async function getStaffById(staffId, branchId)
 {
     const row = await db('staff')
         .where({ id: staffId, branch_id: branchId })
+        .whereNull('deleted_at') // 🛡️ Hide deleted staff
         .first();
 
     if (!row) return null;
@@ -30,7 +33,12 @@ export async function getStaffById(staffId, branchId)
 
 export async function getStaffByPhone(phone)
 {
-    const row = await db('staff').where({ phone }).first();
+    // Note: Phone lookups (e.g. login) should definitely ignore deleted users
+    const row = await db('staff')
+        .where({ phone })
+        .whereNull('deleted_at')
+        .first();
+
     return row ? mapRowToStaff(row) : null;
 }
 
@@ -38,9 +46,11 @@ export async function listStaffForBranch(branchId, includeTerminated = false)
 {
     const query = db('staff')
         .where({ branch_id: branchId })
+        .whereNull('deleted_at') // 🛡️ Always hide "Hard" deleted (mistakes)
         .orderBy('name', 'asc');
 
-    // By default, we hide people who left (Soft Delete logic)
+    // "Terminated" is different from "Deleted". 
+    // Terminated = Fired (Record exists). Deleted = Mistake (Record hidden).
     if (!includeTerminated)
     {
         query.whereNot({ status: 'TERMINATED' });
@@ -50,31 +60,43 @@ export async function listStaffForBranch(branchId, includeTerminated = false)
     return rows.map(mapRowToStaff);
 }
 
-// --- UPDATE ---
-// src/staff/staffRepository.js
+export async function getStaffByIdGlobal(id)
+{
+    const row = await db('staff')
+        .where({ id })
+        .whereNull('deleted_at')
+        .first();
 
-// 1. UPDATE PROFILE (Safe fields only)
+    return row ? mapRowToStaff(row) : null;
+}
+
+// --- UPDATE ---
+
+// 1. UPDATE PROFILE
 export async function updateStaffDetails(staffId, branchId, updates)
 {
     await db('staff')
         .where({ id: staffId, branch_id: branchId })
+        .whereNull('deleted_at') // Safety
         .update({
             name: updates.name,
             phone: updates.phone,
-            // REMOVED 'role'. Use updateStaffRole for that!
-            // REMOVED 'adhaar'. Sensitive data shouldn't be easy to change.
+            updated_at: Date.now() // ✅ SYNC: Mark as changed
         });
 }
 
-// 2. UPDATE STATUS (Handles Side Effects)
+// 2. UPDATE STATUS (Business Logic: Fired/Resigned)
 export async function updateStaffStatus(staffId, branchId, newStatus)
 {
-    const updateData = { status: newStatus };
+    const updateData = {
+        status: newStatus,
+        updated_at: Date.now() // ✅ SYNC: Mark as changed
+    };
 
-    // logic stays encapsulated here (or in service)
     if (newStatus === 'TERMINATED')
     {
-        updateData.terminated_at = db.fn.now();
+        // Use Date.now() for consistency with your schema's integer timestamps
+        updateData.terminated_at = Date.now();
     } else
     {
         updateData.terminated_at = null;
@@ -82,6 +104,7 @@ export async function updateStaffStatus(staffId, branchId, newStatus)
 
     await db('staff')
         .where({ id: staffId, branch_id: branchId })
+        .whereNull('deleted_at')
         .update(updateData);
 }
 
@@ -90,8 +113,25 @@ export async function updateStaffRole(staffId, branchId, newRole)
 {
     await db('staff')
         .where({ id: staffId, branch_id: branchId })
-        .update({ role: newRole });
+        .whereNull('deleted_at')
+        .update({
+            role: newRole,
+            updated_at: Date.now() // ✅ SYNC
+        });
 }
+
+// 4. DELETE (Soft Delete for Mistakes)
+// Use this if you created a staff member by accident and want to remove them entirely
+export async function deleteStaff(staffId, branchId)
+{
+    await db('staff')
+        .where({ id: staffId, branch_id: branchId })
+        .update({
+            deleted_at: Date.now(), // ✅ SYNC: Soft Delete
+            updated_at: Date.now()  // Mark updated so cloud picks up the deletion
+        });
+}
+
 // --- HELPER ---
 function mapRowToStaff(row)
 {
@@ -104,12 +144,8 @@ function mapRowToStaff(row)
         adhaarNumber: row.adhaar_number,
         status: row.status,
         createdAt: row.created_at,
-        terminatedAt: row.terminated_at
+        updatedAt: row.updated_at,
+        terminatedAt: row.terminated_at, // Use standard camelCase
+        deletedAt: row.deleted_at
     };
-}
-
-export async function getStaffByIdGlobal(id)
-{
-    const row = await db('staff').where({ id }).first();
-    return row ? mapRowToStaff(row) : null;
 }

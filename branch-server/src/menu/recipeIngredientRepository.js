@@ -1,3 +1,4 @@
+// src/recipes/recipeIngredientRepository.js
 import db from "../db.js";
 
 /* ============================================================
@@ -8,6 +9,7 @@ export async function getIngredientsForRecipe(recipeId)
 {
   const rows = await db('recipe_ingredients')
     .where({ recipe_id: recipeId })
+    .whereNull('deleted_at') // 🛡️ SYNC: Hide deleted items
     .select('*');
 
   return rows.map(mapRowToIngredient);
@@ -17,6 +19,7 @@ export async function getIngredientById(ingredientId)
 {
   const row = await db('recipe_ingredients')
     .where({ id: ingredientId })
+    .whereNull('deleted_at') // 🛡️ SYNC
     .first();
 
   return row ? mapRowToIngredient(row) : null;
@@ -28,11 +31,14 @@ export async function getIngredientById(ingredientId)
 
 export async function insertIngredient(ingredient)
 {
+  const now = Date.now();
   await db('recipe_ingredients').insert({
     id: ingredient.id,
     recipe_id: ingredient.recipeId,
     ingredient: ingredient.ingredient,
-    quantity: ingredient.quantity
+    quantity: ingredient.quantity,
+    updated_at: now,       // ✅ SYNC: Needed for initial sync
+    deleted_at: null       // ✅ SYNC: Explicitly active
   });
 }
 
@@ -40,15 +46,23 @@ export async function updateIngredientQuantityRepo(ingredientId, quantity)
 {
   await db('recipe_ingredients')
     .where({ id: ingredientId })
-    .update({ quantity });
+    .whereNull('deleted_at') // Safety check
+    .update({
+      quantity,
+      updated_at: Date.now() // ✅ SYNC: Mark as "dirty"
+    });
 }
 
-// Delete specific ingredient (e.g., remove "Salt" from this recipe)
+// Delete specific ingredient (Soft Delete)
 export async function deleteIngredientRepo(ingredientId)
 {
+  // 🛑 STOP: No more .del()
   await db('recipe_ingredients')
     .where({ id: ingredientId })
-    .del();
+    .update({
+      deleted_at: Date.now(), // ✅ SYNC: Soft delete
+      updated_at: Date.now()  // ✅ SYNC: Must update this so cloud sees the deletion!
+    });
 }
 
 // Delete ALL ingredients for ONE recipe (Wipe)
@@ -56,54 +70,62 @@ export async function deleteIngredientsForRecipe(recipeId)
 {
   await db('recipe_ingredients')
     .where({ recipe_id: recipeId })
-    .del();
+    .update({
+      deleted_at: Date.now(),
+      updated_at: Date.now()
+    });
 }
 
 /* ============================================================
    WRITE OPERATIONS (Batch)
-   (Critical for Bulk Edits & Multi-Branch Standardization)
 ============================================================ */
 
-// 🚀 WHAT: Inserts multiple ingredients in one SQL call.
-// 🛡️ WHY:  Performance. Used when creating a new recipe with 10 ingredients, 
-//          or pushing a standard recipe to 50 branches.
 export async function insertIngredientsBatch(ingredients)
 {
+  const now = Date.now();
   await db('recipe_ingredients').insert(
     ingredients.map(ing => ({
       id: ing.id,
       recipe_id: ing.recipeId,
       ingredient: ing.ingredient,
-      quantity: ing.quantity
+      quantity: ing.quantity,
+      updated_at: now,      // ✅ SYNC
+      deleted_at: null
     }))
   );
 }
 
-// 🚀 WHAT: Deletes a specific list of ingredients by ID.
-// 🛡️ WHY:  Used when editing a recipe and removing 3 specific items at once.
+// Soft delete batch
 export async function deleteIngredientsBatch(ingredientIds)
 {
   await db('recipe_ingredients')
     .whereIn('id', ingredientIds)
-    .del();
+    .update({
+      deleted_at: Date.now(),
+      updated_at: Date.now()
+    });
 }
 
-// 🚀 WHAT: Deletes ALL ingredients for MULTIPLE recipes.
-// 🛡️ WHY:  The "Nuclear Option" for Standardization. 
-//          When the Owner pushes a new recipe to 10 branches, we first WIPE 
-//          the old ingredients from all 10 branches using this function.
+// Soft delete batch by recipes (The "Nuclear Option")
 export async function deleteAllIngredientsForRecipes(recipeIds)
 {
   await db('recipe_ingredients')
     .whereIn('recipe_id', recipeIds)
-    .del();
+    .update({
+      deleted_at: Date.now(),
+      updated_at: Date.now()
+    });
 }
 
+// Helper alias
 export async function deleteAllIngredientsForRecipe(recipeId)
 {
   await db('recipe_ingredients')
     .where('recipe_id', recipeId)
-    .del();
+    .update({
+      deleted_at: Date.now(),
+      updated_at: Date.now()
+    });
 }
 
 /* ============================================================
@@ -115,6 +137,8 @@ function mapRowToIngredient(row)
     id: row.id,
     recipeId: row.recipe_id,
     ingredient: row.ingredient,
-    quantity: row.quantity
+    quantity: row.quantity,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at
   };
 }

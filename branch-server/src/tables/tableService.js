@@ -28,17 +28,21 @@ async function getTableOrThrow(tableId, branchId)
     }
     return table;
 }
-export async function assertTableFree(tableId)
+
+export async function assertTableFree(tableId, branchId) 
 {
-    // 1. Get the table (assuming you have a getTableById function in this file or repo)
-    // If you don't have getTableById imported, you might need to import it from tableRepository
-    /* const table = await getTableById(tableId); 
-       if (!table) throw new Error("Table not found");
-       if (table.status !== 'available') throw new Error("Table is occupied");
-    */
-    // DELETEME
-    // For now, to just STOP THE CRASH so you can test Menu APIs, 
-    // we can make this a "dummy" function that does nothing.
+    const table = await getTableById(tableId, branchId);
+
+    if (!table) 
+    {
+        throw new Error("Table not found");
+    }
+
+    if (table.status !== TABLE_STATUS.FREE) 
+    {
+        throw new Error(`Table is currently ${table.status}. Please clear it first.`);
+    }
+
     return true;
 }
 

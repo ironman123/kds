@@ -4,6 +4,7 @@ export async function logMenuEvent(event)
 {
     await db('menu_events').insert({
         id: event.id,
+        branch_id: event.branchId,
         entity_type: event.entityType,
         entity_id: event.entityId,
         event_type: event.type,

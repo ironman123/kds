@@ -221,7 +221,8 @@ export async function createMenuItemForBranches({ categoryName, name, price, pre
                     id: crypto.randomUUID(),
                     recipeId: newRecipeId,
                     ingredient: ing.ingredient,
-                    quantity: ing.quantity
+                    quantity: ing.quantity,
+                    updatedAt: now
                 });
             }
         }
@@ -368,7 +369,7 @@ export async function updateMenuItemDetails({ itemId, branchId, updates, actorId
    UPDATE (Batch & Smart Move)
 ============================================================ */
 
-export async function updateMenuItemForBranches({ itemName, updates, targetBranchIds, actorId })
+export async function updateMenuItemForBranches({ name, updates, targetBranchIds, actorId })
 {
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
 
@@ -376,9 +377,9 @@ export async function updateMenuItemForBranches({ itemName, updates, targetBranc
     {
         throw new Error("Target branch IDs required (Array)");
     }
-    if (!itemName) throw new Error("Item name is required to identify items");
+    if (!name) throw new Error("Item name is required to identify items");
     // Find items
-    const targetItems = await findItemsByNameInBranches(itemName, targetBranchIds);
+    const targetItems = await findItemsByNameInBranches(name, targetBranchIds);
     const targetItemIds = targetItems.map(t => t.id);
 
     if (targetItemIds.length === 0)
@@ -390,41 +391,48 @@ export async function updateMenuItemForBranches({ itemName, updates, targetBranc
         itemIds: targetItemIds,
         updates
     });
-
     await logMenuEvent({
         id: crypto.randomUUID(),
         entityType: "ITEM",
         entityId: "BATCH_OPERATION",
         type: "BATCH_UPDATED",
-        oldValue: itemName,
+        oldValue: name,
         newValue: JSON.stringify({ updates, count: affectedCount }),
         actorId,
         createdAt: Date.now()
     });
 
-    return { ok: true, message: `Updated '${itemName}' in ${affectedCount} locations.` };
+    return { ok: true, message: `Updated '${name}' in ${affectedCount} locations.` };
 }
 
-export async function moveMenuItemForBranches({ itemName, targetCategoryName, targetBranchIds, actorId })
+export async function moveMenuItemForBranches({ name, targetCategoryName, targetBranchIds, actorId })
 {
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+
     if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0)
     {
         throw new Error("Target branch IDs required (Array)");
     }
 
-    const items = await findItemIdsByName(itemName, targetBranchIds);
+    // 1. Find Data
+    const items = await findItemIdsByName(name, targetBranchIds);
     const categories = await findCategoryIdsByName(targetCategoryName, targetBranchIds);
 
     const moves = [];
     const missingInBranches = [];
 
+    // We track which branches were actually updated for logging purposes
+    const affectedBranchIds = new Set();
+
+    // 2. Calculate Moves
     for (const item of items)
     {
         const matchingCat = categories.find(c => c.branch_id === item.branch_id);
+
         if (matchingCat)
         {
             moves.push({ itemId: item.item_id, categoryId: matchingCat.id });
+            affectedBranchIds.add(item.branch_id);
         } else
         {
             missingInBranches.push(item.branch_id);
@@ -433,22 +441,29 @@ export async function moveMenuItemForBranches({ itemName, targetCategoryName, ta
 
     if (moves.length === 0) return { ok: true, message: "No moves possible (Items or Categories missing)." };
 
+    // 3. Execute Batch Update
     await updateItemCategoriesBatch(moves);
 
-    await logMenuEvent({
-        id: crypto.randomUUID(),
-        entityType: "ITEM",
-        entityId: "BATCH_OPERATION",
-        type: "BATCH_MOVED",
-        oldValue: itemName,
-        newValue: `Moved to '${targetCategoryName}' in ${moves.length} locations`,
-        actorId,
-        createdAt: Date.now()
-    });
+    // 4. Log Events (PER BRANCH)
+    // 🛑 FIX: Loop through affected branches so each one gets a specific syncable event.
+    for (const bId of affectedBranchIds)
+    {
+        await logMenuEvent({
+            id: crypto.randomUUID(),
+            branchId: bId, // ✅ CRITICAL: Now the cloud knows where this happened
+            entityType: "ITEM",
+            entityId: "BATCH_OPERATION",
+            type: "BATCH_MOVED",
+            oldValue: name,
+            newValue: `Moved to '${targetCategoryName}'`,
+            actorId,
+            createdAt: Date.now()
+        });
+    }
 
     return {
         ok: true,
-        message: `Moved '${itemName}' in ${moves.length} branches. Skipped ${missingInBranches.length} missing categories.`
+        message: `Moved '${name}' in ${moves.length} branches. Skipped ${missingInBranches.length} missing categories.`
     };
 }
 
@@ -478,7 +493,7 @@ export async function deleteMenuItem({ itemId, branchId, actorId })
     return { ok: true };
 }
 
-export async function deleteMenuItemForBranches({ itemName, targetBranchIds, actorId })
+export async function deleteMenuItemForBranches({ name, targetBranchIds, actorId })
 {
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
     if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0)
@@ -486,7 +501,7 @@ export async function deleteMenuItemForBranches({ itemName, targetBranchIds, act
         throw new Error("Target branch IDs required (Array)");
     }
 
-    const targetItems = await findItemsByNameInBranches(itemName, targetBranchIds);
+    const targetItems = await findItemsByNameInBranches(name, targetBranchIds);
     const targetItemIds = targetItems.map(t => t.id);
 
     if (targetItemIds.length === 0) return { ok: true, message: "No items found." };
@@ -498,11 +513,11 @@ export async function deleteMenuItemForBranches({ itemName, targetBranchIds, act
         entityType: "ITEM",
         entityId: "BATCH_OPERATION",
         type: "BATCH_DELETED",
-        oldValue: itemName,
+        oldValue: name,
         newValue: JSON.stringify({ count: deletedCount }),
         actorId,
         createdAt: Date.now()
     });
 
-    return { ok: true, message: `Deleted '${itemName}' from ${deletedCount} locations.` };
+    return { ok: true, message: `Deleted '${name}' from ${deletedCount} locations.` };
 }

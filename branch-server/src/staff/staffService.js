@@ -8,7 +8,8 @@ import
     updateStaffStatus,
     updateStaffDetails,
     updateStaffRole as repoUpdateStaffRole,
-    listStaffForBranch
+    listStaffForBranch,
+    deleteStaff
 } from "./staffRepository.js";
 import { STAFF_STATUS, ALLOWED_STAFF_TRANSITIONS } from "./staffStates.js";
 import { logStaffEvent, STAFF_EVENT_TYPE } from "./staffEventRepository.js";
@@ -82,6 +83,7 @@ export async function createStaff({ name, role, phone, adhaarNumber, branchId, a
     // 5. Log
     await logStaffEvent({
         staffId: staff.id,
+        branchId,
         eventType: STAFF_EVENT_TYPE.CREATED,
         newValue: { name, role, phone }, // Log only non-sensitive initial data
         actorId
@@ -116,6 +118,7 @@ export async function updateStaffProfile({ staffId, branchId, updates, actorId }
     // Log Event
     await logStaffEvent({
         staffId: staffId,
+        branchId,
         eventType: STAFF_EVENT_TYPE.PROFILE_UPDATED,
         oldValue: null, // Storing "null" to save space, or calculate diff if needed
         newValue: Object.keys(updates), // Log *what* fields changed
@@ -151,6 +154,7 @@ export async function changeStaffStatus({ staffId, branchId, newStatus, actorId 
     // 5. Log
     await logStaffEvent({
         staffId: staffId,
+        branchId,
         eventType: STAFF_EVENT_TYPE.STATUS_CHANGED,
         oldValue: staff.status,
         newValue: newStatus,
@@ -177,6 +181,7 @@ export async function changeStaffRole({ staffId, branchId, newRole, actorId })
     // 3. Log
     await logStaffEvent({
         staffId: staffId,
+        branchId,
         eventType: "ROLE_CHANGED",
         oldValue: staff.role,
         newValue: newRole,
@@ -184,6 +189,31 @@ export async function changeStaffRole({ staffId, branchId, newRole, actorId })
     });
 
     return { ...staff, role: newRole };
+}
+
+// NEW: Handle accidental creation (Soft Delete)
+export async function removeStaffMistake({ staffId, branchId, actorId })
+{
+    const staff = await getStaffOrThrow(staffId, branchId);
+
+    // STRICT AUTH: Only Owners can remove staff records entirely
+    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+
+    // Optional: Prevent deleting someone who has actually worked (has shifts/orders)
+    // if (await hasStaffActivity(staffId)) throw new Error("Cannot delete active staff. Use Terminate instead.");
+
+    await deleteStaff(staffId, branchId); // Ensure this is imported from Repo
+
+    await logStaffEvent({
+        staffId: staffId,
+        branchId,
+        eventType: "DELETED_MISTAKE",
+        oldValue: staff.name,
+        newValue: "SOFT_DELETED",
+        actorId
+    });
+
+    return { ok: true };
 }
 
 /* ============================================================

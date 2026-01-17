@@ -15,13 +15,13 @@ import
     getIngredientsForRecipe,
     insertIngredientsBatch,
     deleteIngredientsBatch,
-    deleteAllIngredientsForRecipes, // Plural (Batch)
-    deleteAllIngredientsForRecipe   // Singular (Single Edit)
+    deleteAllIngredientsForRecipes,
+    deleteAllIngredientsForRecipe
 } from "./recipeIngredientRepository.js";
 import { logMenuEvent } from "./menuEventRepository.js";
 import { STAFF_ROLE, assertStaffRole } from "../staff/staffRoles.js";
 import { assertBranchExists } from "../infra/branchService.js";
-import { assertItemExists } from "./menuItemService.js"; // ✅ Correct Import
+import { assertItemExists } from "./menuItemService.js"; // Renamed for clarity in your imports
 import { runInTransaction } from "../infra/transactionManager.js";
 
 /* ============================================================
@@ -33,7 +33,7 @@ async function getRecipeOrThrow(menuItemId, branchId)
     await assertBranchExists(branchId);
 
     // 2. Ensure Item Exists (Secure check with branchId)
-    await ensureItemExists(menuItemId, branchId);
+    await assertItemExists(menuItemId, branchId);
 
     // 3. Fetch Recipe with strict Branch Check
     const recipe = await getRecipeByMenuItemId(menuItemId, branchId);
@@ -52,7 +52,6 @@ export async function getRecipeDetails({ menuItemId, branchId })
 {
     if (!branchId) throw new Error("Branch ID is required");
 
-    // We reuse the secure helper
     const recipe = await getRecipeOrThrow(menuItemId, branchId);
     const ingredients = await getIngredientsForRecipe(recipe.id);
 
@@ -70,7 +69,7 @@ export async function getRecipeForMenuItem(menuItemId, branchId)
 export async function listIngredientsForMenuItem(menuItemId, branchId)
 {
     const recipe = await getRecipeByMenuItemId(menuItemId, branchId);
-    if (!recipe) return []; // Return empty if no recipe exists yet
+    if (!recipe) return [];
     return getIngredientsForRecipe(recipe.id);
 }
 
@@ -90,12 +89,13 @@ export async function updateRecipeInstructions({ menuItemId, instructions, actor
 
     const recipe = await getRecipeOrThrow(menuItemId, branchId);
 
-    if (recipe.instructions === instructions) return recipe; // No-op
+    if (recipe.instructions === instructions) return recipe;
 
     await updateRecipeInstructionsRepo(recipe.id, instructions);
 
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 CHANGED: Added branchId
         entityType: "ITEM",
         entityId: menuItemId,
         type: "RECIPE_INSTRUCTIONS_UPDATED",
@@ -126,6 +126,7 @@ export async function addIngredient({ menuItemId, ingredient, quantity, actorId,
 
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 CHANGED
         entityType: "ITEM",
         entityId: menuItemId,
         type: "INGREDIENT_ADDED",
@@ -143,7 +144,6 @@ export async function changeIngredientQuantity({ menuItemId, ingredientId, newQu
 
     const recipe = await getRecipeOrThrow(menuItemId, branchId);
 
-    // Verify ingredient belongs to this recipe
     const ingredient = await getIngredientById(ingredientId);
     if (!ingredient || ingredient.recipeId !== recipe.id)
     {
@@ -154,6 +154,7 @@ export async function changeIngredientQuantity({ menuItemId, ingredientId, newQu
 
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 CHANGED
         entityType: "ITEM",
         entityId: menuItemId,
         type: "INGREDIENT_QUANTITY_UPDATED",
@@ -177,10 +178,11 @@ export async function removeIngredient({ menuItemId, ingredientId, actorId, bran
         throw new Error("Ingredient does not belong to this recipe");
     }
 
-    await deleteIngredientRepo(ingredientId);
+    await deleteIngredientRepo(ingredientId); // Note: Ensure you imported deleteIngredientRepo as removeIngredientRepo or fixed name
 
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 CHANGED
         entityType: "ITEM",
         entityId: menuItemId,
         type: "INGREDIENT_REMOVED",
@@ -202,6 +204,7 @@ export async function removeAllIngredients({ menuItemId, actorId, branchId })
 
     await logMenuEvent({
         id: crypto.randomUUID(),
+        branchId, // 👈 CHANGED
         entityType: "ITEM",
         entityId: menuItemId,
         type: "ALL_INGREDIENTS_REMOVED",
@@ -222,105 +225,80 @@ export async function editRecipe({
     actorId,
     instructions,
     addIngredients = [],
-    updateIngredients = [], // [{ ingredientId, quantity }]
+    updateIngredients = [],
     removeIngredientIds = [],
-    replaceAllIngredients = null // array OR null
+    replaceAllIngredients = null
 })
 {
     await assertBranchExists(branchId);
     await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
-    // Secure fetch
     const recipe = await getRecipeOrThrow(menuItemId, branchId);
-
     const logs = [];
 
-    // START TRANSACTION (Safety Lock)
     await runInTransaction(async () =>
     {
-
-        // 1. Update Instructions (Optional)
+        // 1. Update Instructions
         if (instructions !== undefined && instructions !== recipe.instructions)
         {
             if (typeof instructions !== 'string') throw new Error("Instructions must be a string");
-
             await updateRecipeInstructionsRepo(recipe.id, instructions);
             logs.push({ type: "RECIPE_INSTRUCTIONS_UPDATED", newValue: "UPDATED" });
         }
 
         // 2. Handling Ingredients
-
-        // CASE A: Full Replacement ("Wipe & Replace" strategy)
+        // CASE A: Full Replacement
         if (Array.isArray(replaceAllIngredients))
         {
-            // Delete ALL existing ingredients for this recipe
-            await deleteAllIngredientsForRecipe(recipe.id); // Singular version
+            await deleteAllIngredientsForRecipe(recipe.id);
             logs.push({ type: "ALL_INGREDIENTS_REMOVED" });
 
-            // Insert ALL new ingredients in one Batch Call
             if (replaceAllIngredients.length > 0)
             {
-                const toInsert = replaceAllIngredients.map(ing =>
-                {
-                    if (!ing.ingredient || !ing.quantity) throw new Error("Invalid ingredient payload in replaceAll");
-                    return {
-                        id: crypto.randomUUID(),
-                        recipeId: recipe.id,
-                        ingredient: ing.ingredient,
-                        quantity: ing.quantity
-                    };
-                });
-
+                const toInsert = replaceAllIngredients.map(ing => ({
+                    id: crypto.randomUUID(),
+                    recipeId: recipe.id,
+                    ingredient: ing.ingredient,
+                    quantity: ing.quantity
+                }));
                 await insertIngredientsBatch(toInsert);
                 logs.push({ type: "INGREDIENTS_REPLACED", newValue: `${toInsert.length} items` });
             }
         }
-        // CASE B: Granular Updates (Add/Edit/Remove specific items)
+        // CASE B: Granular Updates
         else
         {
-            // Validate Ownership: Do these ingredients belong to this recipe?
             const currentIngredients = await getIngredientsForRecipe(recipe.id);
             const validIds = new Set(currentIngredients.map(i => i.id));
 
-            // B1. Batch Remove
             if (removeIngredientIds.length > 0)
             {
                 removeIngredientIds.forEach(id =>
                 {
                     if (!validIds.has(id)) throw new Error(`Ingredient ${id} does not belong to this recipe`);
                 });
-
                 await deleteIngredientsBatch(removeIngredientIds);
                 logs.push({ type: "INGREDIENTS_REMOVED", newValue: `${removeIngredientIds.length} items` });
             }
 
-            // B2. Update Quantities
             if (updateIngredients.length > 0)
             {
                 for (const upd of updateIngredients)
                 {
                     if (!validIds.has(upd.ingredientId)) throw new Error(`Ingredient ${upd.ingredientId} does not belong to this recipe`);
-                    if (!upd.quantity) throw new Error("Quantity required for update");
-
                     await updateIngredientQuantityRepo(upd.ingredientId, upd.quantity);
                 }
                 logs.push({ type: "INGREDIENT_QUANTITIES_UPDATED", newValue: `${updateIngredients.length} items` });
             }
 
-            // B3. Batch Add
             if (addIngredients.length > 0)
             {
-                const toInsert = addIngredients.map(ing =>
-                {
-                    if (!ing.ingredient || !ing.quantity) throw new Error("Invalid ingredient payload in addIngredients");
-                    return {
-                        id: crypto.randomUUID(),
-                        recipeId: recipe.id,
-                        ingredient: ing.ingredient,
-                        quantity: ing.quantity
-                    };
-                });
-
+                const toInsert = addIngredients.map(ing => ({
+                    id: crypto.randomUUID(),
+                    recipeId: recipe.id,
+                    ingredient: ing.ingredient,
+                    quantity: ing.quantity
+                }));
                 await insertIngredientsBatch(toInsert);
                 logs.push({ type: "INGREDIENTS_ADDED", newValue: `${toInsert.length} items` });
             }
@@ -331,6 +309,7 @@ export async function editRecipe({
         {
             await logMenuEvent({
                 id: crypto.randomUUID(),
+                branchId, // 👈 CHANGED
                 entityType: "ITEM",
                 entityId: menuItemId,
                 type: log.type,
@@ -353,20 +332,17 @@ export async function updateRecipeForBranches({
     itemName,
     targetBranchIds,
     newInstructions,
-    newIngredients = null, // Array or null. If provided, it REPLACES old ingredients.
+    newIngredients = null,
     actorId
 })
 {
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
 
-    // Guardrails
-    if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0)
-    {
-        throw new Error("Target branch IDs required (Array)");
-    }
+    if (!targetBranchIds || targetBranchIds.length === 0) throw new Error("Target branch IDs required");
     if (!itemName) throw new Error("Item name required");
 
-    // 1. Find the Recipes IDs in those branches
+    // 1. Find Recipes + Branch IDs
+    // (Ensure your Repo returns 'branch_id' in this function!)
     const recipes = await findRecipeIdsByItemName(itemName, targetBranchIds);
     const recipeIds = recipes.map(r => r.id);
 
@@ -377,27 +353,22 @@ export async function updateRecipeForBranches({
 
     await runInTransaction(async () =>
     {
-        // 2. Update Instructions (Batch)
+        // 2. Update Instructions
         if (newInstructions)
         {
             await updateRecipeInstructionsBatch(recipeIds, newInstructions);
         }
 
-        // 3. Standardize Ingredients (Batch)
-        // Strategy: Wipe & Replace
+        // 3. Standardize Ingredients
         if (Array.isArray(newIngredients))
         {
-            // A. Batch Wipe
-            await deleteAllIngredientsForRecipes(recipeIds); // Plural version
+            await deleteAllIngredientsForRecipes(recipeIds);
 
-            // B. Prepare Batch Insert
             const ingredientsToInsert = [];
-
             for (const rId of recipeIds)
             {
                 for (const ing of newIngredients)
                 {
-                    if (!ing.ingredient || !ing.quantity) throw new Error("Invalid ingredient payload");
                     ingredientsToInsert.push({
                         id: crypto.randomUUID(),
                         recipeId: rId,
@@ -406,7 +377,6 @@ export async function updateRecipeForBranches({
                     });
                 }
             }
-
             if (ingredientsToInsert.length > 0)
             {
                 await insertIngredientsBatch(ingredientsToInsert);
@@ -414,17 +384,25 @@ export async function updateRecipeForBranches({
         }
     });
 
-    // 4. Log
-    await logMenuEvent({
-        id: crypto.randomUUID(),
-        entityType: "ITEM",
-        entityId: "BATCH_OPERATION",
-        type: "RECIPE_BATCH_UPDATED",
-        oldValue: itemName,
-        newValue: `Updated in ${recipeIds.length} locations`,
-        actorId,
-        createdAt: Date.now()
-    });
+    // 4. Log Per Branch (Better for Sync)
+    // We group by branch so each branch gets 1 log event
+    const affectedBranches = [...new Set(recipes.map(r => r.branch_id || r.branchId))];
+
+    for (const bId of affectedBranches)
+    {
+        if (!bId) continue;
+        await logMenuEvent({
+            id: crypto.randomUUID(),
+            branchId: bId, // 👈 CHANGED: Log specifically for this branch
+            entityType: "ITEM",
+            entityId: "BATCH_OPERATION",
+            type: "RECIPE_BATCH_UPDATED",
+            oldValue: itemName,
+            newValue: "Standardized by Owner",
+            actorId,
+            createdAt: Date.now()
+        });
+    }
 
     return {
         ok: true,

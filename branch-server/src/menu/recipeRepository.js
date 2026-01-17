@@ -1,12 +1,10 @@
+// src/recipes/recipeRepository.js
 import db from "../db.js";
 
 /* ============================================================
    READ OPERATIONS
 ============================================================ */
 
-// 🔍 WHAT: Fetches a recipe for a specific menu item, ensuring it belongs to the correct branch.
-// 🛡️ WHY:  Security. Since 'recipes' table doesn't have 'branch_id', we MUST join 
-//          up through 'menu_items' -> 'menu_categories' to verify ownership.
 export async function getRecipeByMenuItemId(menuItemId, branchId)
 {
   const row = await db('recipes')
@@ -14,22 +12,21 @@ export async function getRecipeByMenuItemId(menuItemId, branchId)
     .join('menu_categories', 'menu_items.category_id', 'menu_categories.id')
     .select('recipes.*')
     .where('recipes.menu_item_id', menuItemId)
-    .andWhere('menu_categories.branch_id', branchId) // <--- Strict Security Check
+    .andWhere('menu_categories.branch_id', branchId)
+    .whereNull('recipes.deleted_at') // 🛡️ SYNC: Hide deleted recipes
     .first();
 
   return row ? mapRowToRecipe(row) : null;
 }
 
-// 🔍 WHAT: Finds Recipe IDs for items with a specific name across specific branches.
-// 🛡️ WHY:  Enabler for "Batch Recipe Update". 
-//          The Owner says: "Update 'Burger' recipe in Downtown and Uptown."
 export async function findRecipeIdsByItemName(itemName, branchIds)
 {
   return db('recipes')
     .join('menu_items', 'recipes.menu_item_id', 'menu_items.id')
     .join('menu_categories', 'menu_items.category_id', 'menu_categories.id')
-    .select('recipes.id', 'menu_items.name as item_name')
+    .select('recipes.id', 'menu_items.name as item_name', 'menu_categories.branch_id')
     .whereIn('menu_categories.branch_id', branchIds)
+    .whereNull('recipes.deleted_at') // 🛡️ SYNC
     .andWhereRaw('LOWER(menu_items.name) = LOWER(?)', [itemName]);
 }
 
@@ -37,7 +34,6 @@ export async function findRecipeIdsByItemName(itemName, branchIds)
    WRITE OPERATIONS (Single)
 ============================================================ */
 
-// ✏️ WHAT: Inserts a new recipe.
 export async function insertRecipe(recipe)
 {
   await db('recipes').insert({
@@ -45,37 +41,38 @@ export async function insertRecipe(recipe)
     menu_item_id: recipe.menuItemId,
     instructions: recipe.instructions,
     created_at: recipe.createdAt,
-    updated_at: recipe.updatedAt
+    updated_at: recipe.updatedAt,
+    deleted_at: null // ✅ SYNC: Explicitly active
   });
 }
 
-// ✏️ WHAT: Updates instructions for one specific recipe.
 export async function updateRecipeInstructionsRepo(recipeId, instructions)
 {
   await db('recipes')
     .where({ id: recipeId })
+    .whereNull('deleted_at') // Safety: Don't edit ghosts
     .update({
       instructions: instructions,
-      updated_at: Date.now()
+      updated_at: Date.now() // ✅ SYNC: Mark as dirty
     });
 }
 
-// 🗑️ WHAT: Deletes a recipe manually.
-// 🛡️ WHY:  Fallback if "ON DELETE CASCADE" is missing or if you want to clear a recipe without deleting the item.
+// 🗑️ Soft Delete
 export async function deleteRecipeRepo(recipeId)
 {
+  // 🛑 STOP: No more .del()
   await db('recipes')
     .where({ id: recipeId })
-    .del();
+    .update({
+      deleted_at: Date.now(), // ✅ SYNC: Soft Delete
+      updated_at: Date.now()  // ✅ SYNC: Required for cloud sync!
+    });
 }
 
 /* ============================================================
    WRITE OPERATIONS (Batch)
 ============================================================ */
 
-// 🚀 WHAT: Inserts multiple recipes in ONE database call.
-// 🛡️ WHY:  Critical for "Batch Create Item". When adding "Burger" to 50 branches, 
-//          we use this to insert 50 recipes instantly.
 export async function insertRecipesBatch(recipes)
 {
   await db('recipes').insert(
@@ -84,30 +81,32 @@ export async function insertRecipesBatch(recipes)
       menu_item_id: r.menuItemId,
       instructions: r.instructions,
       created_at: r.createdAt,
-      updated_at: r.updatedAt
+      updated_at: r.updatedAt,
+      deleted_at: null // ✅ SYNC
     }))
   );
 }
 
-// 🚀 WHAT: Updates instructions for MULTIPLE recipes at once.
-// 🛡️ WHY:  Performance. Used when pushing a "Standard Recipe" to all branches.
 export async function updateRecipeInstructionsBatch(recipeIds, newInstructions)
 {
   await db('recipes')
     .whereIn('id', recipeIds)
+    .whereNull('deleted_at')
     .update({
       instructions: newInstructions,
-      updated_at: Date.now()
+      updated_at: Date.now() // ✅ SYNC
     });
 }
 
-// 🗑️ WHAT: Deletes recipes for specific Item IDs.
-// 🛡️ WHY:  Used if we want to "Clear Recipes" from a list of items without deleting the items themselves.
+// 🗑️ Batch Soft Delete
 export async function deleteRecipesByItemIds(itemIds)
 {
   await db('recipes')
     .whereIn('menu_item_id', itemIds)
-    .del();
+    .update({
+      deleted_at: Date.now(), // ✅ SYNC
+      updated_at: Date.now()
+    });
 }
 
 /* ============================================================
@@ -120,6 +119,7 @@ function mapRowToRecipe(row)
     menuItemId: row.menu_item_id,
     instructions: row.instructions,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at
   };
 }
