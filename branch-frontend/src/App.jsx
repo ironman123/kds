@@ -4,6 +4,7 @@ import useUserStore from './store/userStore';
 
 import LoginPage from './pages/LoginPage';
 import DashboardLayout from './layouts/DashboardLayout';
+import StaffManagement from './features/staff/StaffManagement';
 
 // Placeholder Pages (We will replace 'OrderInterface' next)
 const OrderInterface = () => <h2>🍔 Taking Orders (POS)</h2>;
@@ -38,7 +39,7 @@ export default function App()
           <Route index element={<OrderInterface />} />
 
           <Route path="kds" element={<KitchenDisplay />} />
-          <Route path="staff" element={<h2>Staff Management</h2>} />
+          <Route path="staff" element={<StaffManagement />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 

@@ -45,19 +45,40 @@ export async function getStaffByPhone(phone)
 export async function listStaffForBranch(branchId, includeTerminated = false)
 {
     const query = db('staff')
-        .where({ branch_id: branchId })
-        .whereNull('deleted_at') // 🛡️ Always hide "Hard" deleted (mistakes)
-        .orderBy('name', 'asc');
+        .leftJoin('branch', 'staff.branch_id', 'branch.id')
+        .select(
+            'staff.*',
+            'branch.name as branch_name'
+        )
+        .whereNull('staff.deleted_at')
+        .orderBy('branch.name', 'asc')
+        .orderBy('staff.name', 'asc')
+
+    if (branchId)
+    {
+        if (Array.isArray(branchId))
+        {
+            // Case A: Owner filters specific branches ['b1', 'b2']
+            query.whereIn('staff.branch_id', branchId);
+        } else
+        {
+            // Case B: Manager sees their one branch 'b1'
+            query.where('staff.branch_id', branchId);
+        }
+    }
 
     // "Terminated" is different from "Deleted". 
     // Terminated = Fired (Record exists). Deleted = Mistake (Record hidden).
     if (!includeTerminated)
     {
-        query.whereNot({ status: 'TERMINATED' });
+        query.whereNot('staff.status', 'TERMINATED');
     }
 
     const rows = await query;
-    return rows.map(mapRowToStaff);
+    return rows.map(row => ({
+        ...mapRowToStaff(row),
+        branchName: row.branch_name || 'Unknown Branch' // 👈 Add to object
+    }));
 }
 
 export async function getStaffByIdGlobal(id)

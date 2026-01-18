@@ -220,6 +220,7 @@ export async function removeStaffMistake({ staffId, branchId, actorId })
    WRAPPERS (For convenience in Controller)
 ============================================================ */
 
+// Accepts branchId (String) OR null (for Owner)
 export async function listActiveStaff(branchId)
 {
     return listStaffForBranch(branchId, false);

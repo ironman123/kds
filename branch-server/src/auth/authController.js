@@ -5,6 +5,7 @@ import db from "../db.js"
 
 const router = express.Router();
 
+const THIS_SERVER_BRANCH_ID = "B2";
 /* ============================================================
    PUBLIC ROUTES (No Token Needed)
 ============================================================ */
@@ -24,20 +25,24 @@ router.post("/register", async (req, res) =>
 });
 
 // GET /api/auth/directory
-// Public endpoint for the "Quick Login" screen.
-// returns minimal info (Name, Role, Username) - NO sensitive data.
 router.get("/directory", async (req, res) =>
 {
     try
     {
-        // You might want to filter this by a "branchId" query param in the future
         const staffMembers = await db('staff')
-            .where({ status: 'ACTIVE' }) // Only show active staff
-            .select('id', 'name', 'role', 'username', 'branch_id'); // ⚠️ NO PASSWORDS
+            .where({ status: 'ACTIVE' }) // 1. Must be Active
+            .andWhere(function ()
+            {
+                // 2. Logic: Show if they belong to THIS branch OR are the Owner
+                this.where('branch_id', THIS_SERVER_BRANCH_ID)
+                    .orWhere('role', 'OWNER');
+            })
+            .select('id', 'name', 'role', 'username', 'branch_id'); // No passwords!
 
         res.json(staffMembers);
     } catch (e)
     {
+        console.error(e);
         res.status(500).json({ error: "Could not fetch directory" });
     }
 });

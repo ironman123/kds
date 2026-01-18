@@ -54,16 +54,17 @@ router.get("/", async (req, res) =>
 {
     try
     {
-        const { branchId } = req.context;
+        const { branchId, role } = req.context;
+        const targetBranchIds = role === 'OWNER' ? null : branchId;
         const showHistory = req.query.history === 'true';
 
         if (showHistory)
         {
-            const history = await listAllStaffHistory(branchId);
+            const history = await listAllStaffHistory(targetBranchIds);
             return res.json(history);
         }
 
-        const activeStaff = await listActiveStaff(branchId);
+        const activeStaff = await listActiveStaff(targetBranchIds);
         res.json(activeStaff);
 
     } catch (e)
