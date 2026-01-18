@@ -1,18 +1,18 @@
 import express from "express";
 import
-    {
-        createOrder,
-        getOrderById,
-        getActiveOrders,
-        getOrdersForTable,
-        changeOrderStatus,
-        transferTable
-    } from "./orderService.js";
+{
+    createOrder,
+    getOrderById,
+    getActiveOrders,
+    getOrdersForTable,
+    changeOrderStatus,
+    transferTable
+} from "../orders/orderService.js";
 import
-    {
-        addItemToOrder,
-        changeOrderItemStatus
-    } from "./orderItemService.js";
+{
+    addItemToOrder,
+    changeOrderItemStatus
+} from "../orders/orderItemService.js";
 
 const router = express.Router();
 

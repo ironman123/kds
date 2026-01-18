@@ -1,7 +1,6 @@
 import express from "express";
 import
 {
-    createStaff,
     listActiveStaff,
     listAllStaffHistory,
     updateStaffProfile,
@@ -85,23 +84,37 @@ router.post("/", async (req, res) =>
 {
     try
     {
+        await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
         const { branchId, actorId } = req.context;
 
         // 1. Validate Input
         assertRequired(req.body, ['name', 'role', 'phone', 'adhaarNumber']);
         assertEnum(req.body.role, STAFF_ROLE, 'role');
 
+        const cleanName = req.body.name.split(' ')[0].toLowerCase().replace(/[^a-z]/g, '');
+        const autoUsername = `${cleanName}.${Math.floor(1000 + Math.random() * 9000)}`;
+        const tempPassword = `Welcome@${new Date().getFullYear()}`;
+
         // 2. Call Service
-        const newStaff = await createStaff({
+        const newStaff = await registerStaff({
             branchId,
             actorId,
             name: req.body.name,
             role: req.body.role,
             phone: req.body.phone,
-            adhaarNumber: req.body.adhaarNumber
+            adhaarNumber: req.body.adhaarNumber,
+            // Pass the generated credentials
+            username: autoUsername,
+            password: tempPassword
         });
-
-        res.status(201).json(newStaff);
+        res.status(201).json({
+            ...newStaff,
+            tempCredentials: {
+                username: autoUsername,
+                password: tempPassword
+            },
+            message: "Staff Hired. Please share these credentials immediately."
+        });
 
     } catch (e)
     {
@@ -121,6 +134,7 @@ router.patch("/:id", async (req, res) =>
 {
     try
     {
+        await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
         const { branchId, actorId } = req.context;
 
         // Note: We do NOT allow changing 'role' or 'status' here.
@@ -153,6 +167,7 @@ router.patch("/:id/status", async (req, res) =>
 {
     try
     {
+        await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
         const { branchId, actorId } = req.context;
 
         // 1. Validate Input
@@ -185,6 +200,7 @@ router.patch("/:id/role", async (req, res) =>
 {
     try
     {
+        await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
         const { branchId, actorId } = req.context;
 
         // 1. Validate Input
