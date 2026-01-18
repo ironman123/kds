@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { insertBranch, getBranchById, listAllBranches, updateBranchRepo } from "./branchRepository.js";
 
-export function createBranch({ name, address })
+export async function createBranch({ name, address })
 {
     if (!name || !address)
     {
@@ -18,7 +18,7 @@ export function createBranch({ name, address })
         createdAt: now,
     };
 
-    insertBranch(branch);
+    await insertBranch(branch);
     return branch;
 }
 
