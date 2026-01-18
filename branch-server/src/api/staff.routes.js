@@ -19,28 +19,28 @@ const router = express.Router();
    Automatically validates that we know WHICH branch and WHICH user
    is making the request.
 ============================================================ */
-router.use((req, res, next) =>
-{
-    // 1. Extract Branch ID (Header preferred, query fallback)
-    const branchId = req.headers['x-branch-id'] || req.query.branchId;
+// router.use((req, res, next) =>
+// {
+//     // 1. Extract Branch ID (Header preferred, query fallback)
+//     const branchId = req.headers['x-branch-id'] || req.query.branchId;
 
-    // 2. Extract Actor ID (In production, this comes from JWT/Auth Middleware)
-    // For now, we trust the client to send it (Dev Mode)
-    const actorId = req.headers['x-actor-id'] || req.body.actorId || req.query.actorId;
+//     // 2. Extract Actor ID (In production, this comes from JWT/Auth Middleware)
+//     // For now, we trust the client to send it (Dev Mode)
+//     const actorId = req.headers['x-actor-id'] || req.body.actorId || req.query.actorId;
 
-    if (!branchId)
-    {
-        return res.status(400).json({ error: "Missing Context: 'x-branch-id' header is required." });
-    }
-    if (!actorId)
-    {
-        return res.status(400).json({ error: "Missing Context: 'x-actor-id' header is required." });
-    }
-    // Attach to request so routes can use it easily
-    req.context = { branchId, actorId };
+//     if (!branchId)
+//     {
+//         return res.status(400).json({ error: "Missing Context: 'x-branch-id' header is required." });
+//     }
+//     if (!actorId)
+//     {
+//         return res.status(400).json({ error: "Missing Context: 'x-actor-id' header is required." });
+//     }
+//     // Attach to request so routes can use it easily
+//     req.context = { branchId, actorId };
 
-    next();
-});
+//     next();
+// });
 
 /* ============================================================
    READ ROUTES

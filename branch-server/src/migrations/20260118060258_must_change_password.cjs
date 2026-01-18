@@ -6,12 +6,9 @@ exports.up = async function (knex)
 {
     return knex.schema.alterTable('staff', (table) =>
     {
-        // Identity Columns
-        table.string('username').unique().notNullable(); // Unique login ID
-        table.string('password_hash').notNullable();     // Encrypted password
-
-        // Optional: Index for faster login lookups
-        table.index('username');
+        // 1 = True, 0 = False
+        // We default to true (1) so new hires are forced to reset by default.
+        table.boolean('must_change_password').defaultTo(true);
     });
 }
 
@@ -23,7 +20,6 @@ exports.down = async function (knex)
 {
     return knex.schema.alterTable('staff', (table) =>
     {
-        table.dropColumn('username');
-        table.dropColumn('password_hash');
+        table.dropColumn('must_change_password');
     });
 }
