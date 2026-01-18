@@ -1,6 +1,7 @@
 import express from "express";
 import { registerStaff, loginStaff, updatePassword } from "./authService.js";
 import { requireAuth } from "./authMiddleware.js";
+import db from "../db.js"
 
 const router = express.Router();
 
