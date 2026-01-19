@@ -7,11 +7,19 @@ import db from "../db.js";
 
 export async function getCategoryById(categoryId, branchId)
 {
-  const row = await db('menu_categories')
-    .where({ id: categoryId, branch_id: branchId })
+  const query = db('menu_categories')
+    .where({ id: categoryId })
     .whereNull('deleted_at') // 🛡️ SYNC: Hide ghosts
     .first();
 
+  // 🧠 FIX: Only enforce branch check if branchId is NOT null (Manager context)
+  // If Owner passes null, this is skipped, allowing global access by ID.
+  if (branchId)
+  {
+    query.where({ branch_id: branchId });
+  }
+
+  const row = await query;
   return row ? mapRowToCategory(row) : null;
 }
 
@@ -39,9 +47,17 @@ export async function findCategoryIdsByName(name, branchIds)
 export async function listCategoriesRepo(branchId, onlyAvailable = false)
 {
   const query = db('menu_categories')
-    .where({ branch_id: branchId })
-    .whereNull('deleted_at') // 🛡️ SYNC
-    .orderBy('sort_order', 'asc');
+    .select('menu_categories.*', 'branch.name as branch_name') // Join branch name for context
+    .leftJoin('branch', 'menu_categories.branch_id', 'branch.id')
+    .whereNull('menu_categories.deleted_at')
+    .orderBy('branch.name', 'asc') // Group by branch first
+    .orderBy('menu_categories.sort_order', 'asc');
+
+
+  if (branchId)
+  {
+    query.where('menu_categories.branch_id', branchId);
+  }
 
   if (onlyAvailable)
   {
@@ -100,28 +116,85 @@ export async function insertCategory(category)
 
 export async function updateCategoryRepo(categoryId, branchId, updates)
 {
-  const dbUpdates = { updated_at: Date.now() }; // ✅ SYNC: Mark dirty
+  try 
+  {
+    const dbUpdates = { updated_at: Date.now() }; // ✅ SYNC: Mark dirty
 
-  if (updates.name !== undefined) dbUpdates.name = updates.name;
-  if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder;
-  if (updates.available !== undefined) dbUpdates.available = updates.available ? 1 : 0;
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder;
+    if (updates.available !== undefined) dbUpdates.available = updates.available ? 1 : 0;
 
-  await db('menu_categories')
-    .where({ id: categoryId, branch_id: branchId })
-    .whereNull('deleted_at') // Safety
-    .update(dbUpdates);
+    // 1. Start building the query
+    const query = db('menu_categories')
+      .where({ id: categoryId })
+      .whereNull('deleted_at'); // Safety
+
+    // 2. Apply optional branch filter
+    if (branchId)
+    {
+      query.where({ branch_id: branchId });
+    }
+
+    // 3. EXECUTE with await
+    const rowsAffected = await query.update(dbUpdates);
+
+    // 4. Validate success
+    if (rowsAffected === 0)
+    {
+      // If 0, it means the ID didn't exist, OR the branchId didn't match
+      throw new Error(`Category update failed: Item not found or access denied.`);
+    }
+
+    return rowsAffected;
+  }
+  catch (error) 
+  {
+    // Log the actual DB error for debugging (internal logs)
+    console.error(`[Repo] updateCategoryRepo failed: ${error.message}`);
+
+    // Re-throw so the Controller sends a 400/404 instead of crashing silently
+    throw error;
+  }
 }
 
 // 🗑️ Soft Delete
 export async function deleteCategoryRepo(categoryId, branchId)
 {
-  // 🛑 STOP: No more .del()
-  return db('menu_categories')
-    .where({ id: categoryId, branch_id: branchId })
-    .update({
-      deleted_at: Date.now(), // ✅ SYNC
-      updated_at: Date.now()
+  try 
+  {
+    // 1. Start building the query
+    const query = db('menu_categories')
+      .where({ id: categoryId })
+      // Ensure we don't try to delete something already deleted
+      .whereNull('deleted_at');
+
+    // 2. Apply optional branch filter
+    // If Owner passes null, we skip this and find by ID globally.
+    // If Manager passes 'b1', we enforce it.
+    if (branchId)
+    {
+      query.where({ branch_id: branchId });
+    }
+
+    // 3. EXECUTE Soft Delete (Update)
+    const rowsAffected = await query.update({
+      deleted_at: Date.now(), // ✅ SYNC: Mark as deleted
+      updated_at: Date.now()  // Mark updated so sync detects the change
     });
+
+    // 4. Validate success
+    if (rowsAffected === 0)
+    {
+      throw new Error(`Category deletion failed: Item not found or access denied.`);
+    }
+
+    return rowsAffected;
+  }
+  catch (error) 
+  {
+    console.error(`[Repo] deleteCategoryRepo failed: ${error.message}`);
+    throw error;
+  }
 }
 
 /* ============================================================
@@ -180,10 +253,11 @@ function mapRowToCategory(row)
 {
   return {
     id: row.id,
+    branchId: row.branch_id,
+    branchName: row.branch_name,
     name: row.name,
     sortOrder: row.sort_order,
     available: row.available === 1,
-    branchId: row.branch_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at

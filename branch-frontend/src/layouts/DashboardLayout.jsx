@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import
-    {
-        LayoutDashboard,
-        UtensilsCrossed,
-        ChefHat,
-        Users,
-        LogOut,
-        Menu
-    } from 'lucide-react';
+{
+    LayoutDashboard,
+    UtensilsCrossed,
+    ChefHat,
+    Users,
+    LogOut,
+    Menu,
+    List,
+    Layers
+} from 'lucide-react';
 import useUserStore from '../store/userStore';
 import clsx from 'clsx';
 import '../styles/dashboard.css'; // We will create this next
@@ -42,6 +44,12 @@ export default function DashboardLayout()
             icon: <ChefHat size={20} />,
             path: '/dashboard/kds',
             roles: ['OWNER', 'MANAGER', 'CHEF']
+        },
+        {
+            label: 'Categories',
+            icon: <Layers size={20} />,
+            path: '/dashboard/category',
+            roles: ['OWNER', 'MANAGER', 'CHEF', 'WAITER', 'CAPTAIN']
         },
         {
             label: 'Staff',

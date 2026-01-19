@@ -5,7 +5,7 @@ import db from "../db.js"
 
 const router = express.Router();
 
-const THIS_SERVER_BRANCH_ID = "B2";
+const THIS_SERVER_BRANCH_ID = "B3"; //DELETEME
 /* ============================================================
    PUBLIC ROUTES (No Token Needed)
 ============================================================ */
@@ -38,7 +38,6 @@ router.get("/directory", async (req, res) =>
                     .orWhere('role', 'OWNER');
             })
             .select('id', 'name', 'role', 'username', 'branch_id'); // No passwords!
-
         res.json(staffMembers);
     } catch (e)
     {

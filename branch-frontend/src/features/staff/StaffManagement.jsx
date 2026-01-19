@@ -175,7 +175,8 @@ export default function StaffManagement()
         const matchesFilter = (person) =>
         {
             const matchSearch = person.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (person.phone && person.phone.includes(searchTerm));
+                (person.phone && person.phone.includes(searchTerm)) ||
+                (person.branchName && person.branchName.includes(searchTerm));
             const matchRole = filterRole === 'ALL' || person.role === filterRole;
             return matchSearch && matchRole;
         };
@@ -240,10 +241,10 @@ export default function StaffManagement()
             {/* FILTERS */}
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
                 <div className="relative w-full md:w-80">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <Search className="absolute left-3 top-1/4 -translate-y-1/2 text-gray-400" size={18} />
                     <input
                         type="text"
-                        placeholder="Search by name or phone..."
+                        placeholder="Search by name or phone or branch..."
                         className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none text-sm"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}

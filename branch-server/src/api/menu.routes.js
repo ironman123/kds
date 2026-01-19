@@ -29,12 +29,13 @@ import
     editRecipe,
     updateRecipeForBranches
 } from "../menu/recipeService.js";
-//import { requireAuth } from "../auth/authMiddleware.js"; // Your Auth Middleware
+import { assertRequired } from "../utils/validators.js";
+import { requireAuth } from "../auth/authMiddleware.js"; // Your Auth Middleware
 
 const router = express.Router();
 
 // Apply Auth globally to all menu routes
-//router.use(requireAuth);
+router.use(requireAuth);
 
 /* ============================================================
    SECTION 1: CATEGORIES
@@ -44,10 +45,13 @@ router.post("/categories/batch", async (req, res) =>
 {
     try
     {
+        const { actorId, role } = req.context;
+        assertRequired(req.body, ['name', 'targetBranchIds']);
+
         // Service will throw error if actorId is not OWNER
         const result = await createCategoryForBranches({
             ...req.body,
-            actorId: req.context.actorId
+            actorId: actorId
         });
         res.status(201).json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -55,12 +59,12 @@ router.post("/categories/batch", async (req, res) =>
 
 router.patch("/categories/batch", async (req, res) =>
 {
-    console.log("Cat Batch Update")
+    const { actorId } = req.context;
     try
     {
         const result = await updateCategoryForBranches({
             ...req.body,
-            actorId: req.context.actorId
+            actorId: actorId
         });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -68,11 +72,12 @@ router.patch("/categories/batch", async (req, res) =>
 
 router.delete("/categories/batch", async (req, res) =>
 {
+    const { actorId } = req.context;
     try
     {
         const result = await deleteCategoryForBranches({
             ...req.body,
-            actorId: req.context.actorId
+            actorId: actorId
         });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -94,7 +99,15 @@ router.get("/categories", async (req, res) =>
 {
     try
     {
-        const result = await listCategories({ branchId: req.context.branchId });
+        const { branchId, role } = req.context;
+
+        // 🧠 THE FIX: 
+        // If Owner, pass NULL to fetch all categories from all branches.
+        // If Manager, pass their specific branchId.
+        const targetBranchId = role === 'OWNER' ? null : branchId;
+
+
+        const result = await listCategories({ branchId: targetBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -117,11 +130,17 @@ router.patch("/categories/:id", async (req, res) =>
 {
     try
     {
+        const { actorId, role, branchId } = req.context;
+
+        // 🧠 MODULAR FIX:
+        // If Owner: Pass NULL (ignore branch check, find category by ID globally)
+        // If Manager: Pass 'branchId' (ensure category belongs to their branch)
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
         const result = await updateCategoryDetails({
             categoryId: req.params.id,
             ...req.body,
-            actorId: req.context.actorId,
-            branchId: req.context.branchId
+            actorId: actorId,
+            branchId: enforcementBranchId
         });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -131,11 +150,16 @@ router.patch("/categories/:id/availability", async (req, res) =>
 {
     try
     {
+        const { actorId, role, branchId } = req.context;
+
+        // 🧠 MODULAR FIX
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
+
         const result = await changeCategoryAvailability({
             categoryId: req.params.id,
             available: req.body.available,
-            actorId: req.context.actorId,
-            branchId: req.context.branchId
+            actorId,
+            branchId: enforcementBranchId
         });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -145,10 +169,15 @@ router.delete("/categories/:id", async (req, res) =>
 {
     try
     {
+        const { actorId, role, branchId } = req.context;
+
+        // 🧠 MODULAR FIX
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
+
         await deleteCategory({
             categoryId: req.params.id,
-            actorId: req.context.actorId,
-            branchId: req.context.branchId
+            actorId,
+            branchId: enforcementBranchId
         });
         res.sendStatus(204);
     } catch (e) { res.status(400).json({ error: e.message }); }

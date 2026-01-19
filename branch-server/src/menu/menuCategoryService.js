@@ -1,19 +1,19 @@
 import crypto from "crypto";
 import
-    {
-        insertCategory,
-        getCategoryById,
-        getCategoryByName,
-        findCategoryIdsByName,
-        updateCategoryRepo,
-        listCategoriesRepo,
-        countItemsInCategory,
-        deleteCategoryRepo,
-        insertCategoriesBatch,
-        updateCategoriesBatch,
-        deleteCategoriesBatch,
-        checkItemsExistInCategoryName
-    } from "./menuCategoryRepository.js";
+{
+    insertCategory,
+    getCategoryById,
+    getCategoryByName,
+    findCategoryIdsByName,
+    updateCategoryRepo,
+    listCategoriesRepo,
+    countItemsInCategory,
+    deleteCategoryRepo,
+    insertCategoriesBatch,
+    updateCategoriesBatch,
+    deleteCategoriesBatch,
+    checkItemsExistInCategoryName
+} from "./menuCategoryRepository.js";
 import { STAFF_ROLE, assertStaffRole } from "../staff/staffRoles.js";
 import { assertBranchExists } from "../infra/branchService.js";
 import { logMenuEvent } from "./menuEventRepository.js";
@@ -153,13 +153,15 @@ export async function createCategoryForBranches({ name, sortOrder, targetBranchI
 
 export async function listCategories({ branchId })
 {
-    if (!branchId) throw new Error("Branch ID is required");
+    //commented for OwnerRole
+    //if (!branchId) throw new Error("Branch ID is required");
     return listCategoriesRepo(branchId, false);
 }
 
 export async function listPublicCategories({ branchId })
 {
-    if (!branchId) throw new Error("Branch ID is required");
+    //commented for OwnerRole
+    //if (!branchId) throw new Error("Branch ID is required");
     return listCategoriesRepo(branchId, true);
 }
 
