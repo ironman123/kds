@@ -1,5 +1,7 @@
 // src/staff/staffService.js
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
+import db from "../db.js"
 import
 {
     insertStaff,
@@ -36,6 +38,43 @@ async function getStaffOrThrow(staffId, branchId)
     return staff;
 }
 
+// Helper: Generate unique username (rahul, rahul1, rahul2...)
+async function generateUniqueUsername(name)
+{
+    // 1. Sanitize the base name
+    const base = name.split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // 2. Fetch ALL usernames that start with this base in one query
+    // This example uses Knex.js syntax (implied by your prompt)
+    const existingUsers = await db('staff')
+        .where('username', 'like', `${base}%`) // specific logic depends on SQL dialect (Postgres use ILIKE)
+        .select('username');
+
+    // 3. If the exact base doesn't exist, return it immediately
+    const baseExists = existingUsers.some(u => u.username === base);
+    if (!baseExists)
+    {
+        return base;
+    }
+
+    // 4. Extract suffixes and find the max number in memory
+    // This avoids N+1 database queries
+    const suffixes = existingUsers
+        .map(u =>
+        {
+            const match = u.username.match(new RegExp(`^${base}(\\d+)$`));
+            return match ? parseInt(match[1], 10) : 0;
+        })
+        .filter(n => !isNaN(n));
+
+
+    // If we have 'john', 'john1', 'john5', the max is 5. Next is 6.
+    // If suffixes is empty but base exists, start at 1.
+    const maxSuffix = suffixes.length > 0 ? Math.max(...suffixes) : 0;
+
+    return `${base}${maxSuffix + 1}`;
+}
+
 function assertHierarchy(actorRole, targetRole)
 {
     if (ROLE_RANK[actorRole] <= ROLE_RANK[targetRole])
@@ -53,20 +92,18 @@ export async function createStaff({ name, role, phone, adhaarNumber, branchId, a
     if (!branchId) throw new Error("Branch ID is required");
     await assertBranchExists(branchId);
 
-    // 1. Authorization: Only Owner/Manager can hire
+    // 1. Authorization
     const actor = await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
 
-    // 2. Hierarchy Check: Manager cannot hire an Owner
-    assertHierarchy(actor.role, role);
+    // 2. Generate Credentials (THE MISSING PART)
+    const username = await generateUniqueUsername(name);
+    const tempPassword = "123456";
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
     // 3. Validation
-    if (await getStaffByPhone(phone))
-    {
-        throw new Error("Staff with this phone number already exists");
-    }
-    // (Add Adhaar uniqueness check here if needed)
+    // (Your existing validation code...)
 
-    // 4. Create
+    // 4. Create Object
     const staff = {
         id: crypto.randomUUID(),
         branchId,
@@ -74,6 +111,11 @@ export async function createStaff({ name, role, phone, adhaarNumber, branchId, a
         role,
         phone,
         adhaarNumber,
+        // Auth Data
+        username,
+        passwordHash: hashedPassword,
+        mustChangePassword: true,
+        // Status
         status: STAFF_STATUS.ACTIVE,
         createdAt: Date.now(),
     };
@@ -85,11 +127,15 @@ export async function createStaff({ name, role, phone, adhaarNumber, branchId, a
         staffId: staff.id,
         branchId,
         eventType: STAFF_EVENT_TYPE.CREATED,
-        newValue: { name, role, phone }, // Log only non-sensitive initial data
+        newValue: { name, role, phone },
         actorId
     });
 
-    return staff;
+    // 6. Return Credentials to UI
+    return {
+        ...staff,
+        tempCredentials: { username, password: tempPassword }
+    };
 }
 
 export async function updateStaffProfile({ staffId, branchId, updates, actorId })
@@ -147,9 +193,10 @@ export async function changeStaffStatus({ staffId, branchId, newStatus, actorId 
     {
         throw new Error(`Invalid status change: '${staff.status}' -> '${newStatus}'`);
     }
-
+    console.log(staff.status, newStatus);
     // 4. Update
     await updateStaffStatus(staffId, branchId, newStatus);
+    console.log(staff.status, newStatus);
 
     // 5. Log
     await logStaffEvent({

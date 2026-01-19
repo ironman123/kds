@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+import './index.css'
 // import './index.css' // We deleted this, make sure it's removed
 
 ReactDOM.createRoot(document.getElementById('root')).render(

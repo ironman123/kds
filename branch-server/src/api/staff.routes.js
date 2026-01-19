@@ -1,6 +1,7 @@
 import express from "express";
 import
 {
+    createStaff,
     listActiveStaff,
     listAllStaffHistory,
     updateStaffProfile,
@@ -10,36 +11,9 @@ import
 import { assertRequired, assertEnum } from "../utils/validators.js";
 import { STAFF_ROLE, assertStaffRole } from "../staff/staffRoles.js";
 import { STAFF_STATUS } from "../staff/staffStates.js";
+import { requireAuth } from "../auth/authMiddleware.js"; // ✅ USE THIS
 
 const router = express.Router();
-
-/* ============================================================
-   MIDDLEWARE: Context Extractor
-   Automatically validates that we know WHICH branch and WHICH user
-   is making the request.
-============================================================ */
-// router.use((req, res, next) =>
-// {
-//     // 1. Extract Branch ID (Header preferred, query fallback)
-//     const branchId = req.headers['x-branch-id'] || req.query.branchId;
-
-//     // 2. Extract Actor ID (In production, this comes from JWT/Auth Middleware)
-//     // For now, we trust the client to send it (Dev Mode)
-//     const actorId = req.headers['x-actor-id'] || req.body.actorId || req.query.actorId;
-
-//     if (!branchId)
-//     {
-//         return res.status(400).json({ error: "Missing Context: 'x-branch-id' header is required." });
-//     }
-//     if (!actorId)
-//     {
-//         return res.status(400).json({ error: "Missing Context: 'x-actor-id' header is required." });
-//     }
-//     // Attach to request so routes can use it easily
-//     req.context = { branchId, actorId };
-
-//     next();
-// });
 
 /* ============================================================
    READ ROUTES
@@ -47,24 +21,27 @@ const router = express.Router();
 
 /**
  * GET /api/staff
- * Lists staff for the current branch.
- * Usage: GET /api/staff?history=true (to see fired staff)
+ * Lists staff. 
+ * - Owners see ALL (grouped logic handled in UI).
+ * - Managers see ONLY their branch.
  */
-router.get("/", async (req, res) =>
+router.get("/", requireAuth, async (req, res) =>
 {
     try
     {
-        const { branchId, role } = req.context;
-        const targetBranchIds = role === 'OWNER' ? null : branchId;
+        const { branchId, role } = req.context; // Extracted by requireAuth
         const showHistory = req.query.history === 'true';
+
+        // 🧠 Logic: Owners (null) fetch all. Managers fetch specific branch.
+        const targetBranchId = role === STAFF_ROLE.OWNER ? null : branchId;
 
         if (showHistory)
         {
-            const history = await listAllStaffHistory(targetBranchIds);
+            const history = await listAllStaffHistory(targetBranchId);
             return res.json(history);
         }
 
-        const activeStaff = await listActiveStaff(targetBranchIds);
+        const activeStaff = await listActiveStaff(targetBranchId);
         res.json(activeStaff);
 
     } catch (e)
@@ -79,41 +56,39 @@ router.get("/", async (req, res) =>
 
 /**
  * POST /api/staff
- * Hires a new staff member.
+ * Hires a new staff member. Auto-generates credentials.
  */
-router.post("/", async (req, res) =>
+router.post("/", requireAuth, async (req, res) =>
 {
     try
     {
-        await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
-        const { branchId, actorId } = req.context;
+        const { actorId, role: actorRole, branchId: contextBranchId } = req.context;
 
-        // 1. Validate Input
+        // 1. Determine Target Branch
+        // Owners can manually set 'branchId' in body. Managers MUST use their token's branch.
+        let targetBranchId = contextBranchId;
+        if (actorRole === STAFF_ROLE.OWNER && req.body.branchId)
+        {
+            targetBranchId = req.body.branchId;
+        }
+
+        // 2. Validate Input
         assertRequired(req.body, ['name', 'role', 'phone', 'adhaarNumber']);
         assertEnum(req.body.role, STAFF_ROLE, 'role');
 
-        const cleanName = req.body.name.split(' ')[0].toLowerCase().replace(/[^a-z]/g, '');
-        const autoUsername = `${cleanName}.${Math.floor(1000 + Math.random() * 9000)}`;
-        const tempPassword = `Welcome@${new Date().getFullYear()}`;
-
-        // 2. Call Service
-        const newStaff = await registerStaff({
-            branchId,
+        // 3. Call Service (Service generates credentials now!)
+        const newStaff = await createStaff({
+            branchId: targetBranchId,
             actorId,
             name: req.body.name,
             role: req.body.role,
             phone: req.body.phone,
-            adhaarNumber: req.body.adhaarNumber,
-            // Pass the generated credentials
-            username: autoUsername,
-            password: tempPassword
+            adhaarNumber: req.body.adhaarNumber
         });
+
+        // 4. Return result (contains tempCredentials)
         res.status(201).json({
             ...newStaff,
-            tempCredentials: {
-                username: autoUsername,
-                password: tempPassword
-            },
             message: "Staff Hired. Please share these credentials immediately."
         });
 
@@ -131,19 +106,17 @@ router.post("/", async (req, res) =>
  * PATCH /api/staff/:id
  * Updates non-sensitive profile details (Name, Phone).
  */
-router.patch("/:id", async (req, res) =>
+router.patch("/:id", requireAuth, async (req, res) =>
 {
     try
     {
-        await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
-        const { branchId, actorId } = req.context;
+        const { branchId, actorId, role } = req.context;
+        const enforcementBranchId = role === STAFF_ROLE.OWNER ? null : branchId;
 
-        // Note: We do NOT allow changing 'role' or 'status' here.
-        // Those require specific, secured endpoints below.
-
+        // Validation happens inside service via asserts
         const updatedStaff = await updateStaffProfile({
             staffId: req.params.id,
-            branchId,
+            branchId: enforcementBranchId,
             actorId,
             updates: {
                 name: req.body.name,
@@ -152,7 +125,6 @@ router.patch("/:id", async (req, res) =>
         });
 
         res.json(updatedStaff);
-
     } catch (e)
     {
         res.status(400).json({ error: e.message });
@@ -162,29 +134,25 @@ router.patch("/:id", async (req, res) =>
 /**
  * PATCH /api/staff/:id/status
  * Handles Termination, Re-hiring, or Leave.
- * Body: { status: 'TERMINATED' }
  */
-router.patch("/:id/status", async (req, res) =>
+router.patch("/:id/status", requireAuth, async (req, res) =>
 {
     try
     {
-        await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
-        const { branchId, actorId } = req.context;
+        const { branchId, actorId, role } = req.context;
 
-        // 1. Validate Input
         assertRequired(req.body, ['status']);
         assertEnum(req.body.status, STAFF_STATUS, 'status');
+        const enforcementBranchId = role === STAFF_ROLE.OWNER ? null : branchId;
 
-        // 2. Call Service
         const result = await changeStaffStatus({
             staffId: req.params.id,
-            branchId,
+            branchId: enforcementBranchId,
             actorId,
             newStatus: req.body.status
         });
 
         res.json(result);
-
     } catch (e)
     {
         res.status(400).json({ error: e.message });
@@ -194,30 +162,25 @@ router.patch("/:id/status", async (req, res) =>
 /**
  * PATCH /api/staff/:id/role
  * Sensitive Action: Promote/Demote.
- * Only Owners can usually do this.
- * Body: { role: 'MANAGER' }
  */
-router.patch("/:id/role", async (req, res) =>
+router.patch("/:id/role", requireAuth, async (req, res) =>
 {
     try
     {
-        await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
-        const { branchId, actorId } = req.context;
+        const { branchId, actorId, role } = req.context;
 
-        // 1. Validate Input
         assertRequired(req.body, ['role']);
         assertEnum(req.body.role, STAFF_ROLE, 'role');
+        const enforcementBranchId = role === STAFF_ROLE.OWNER ? null : branchId;
 
-        // 2. Call Service
         const result = await changeStaffRole({
             staffId: req.params.id,
-            branchId,
+            branchId: enforcementBranchId,
             actorId,
             newRole: req.body.role
         });
 
         res.json(result);
-
     } catch (e)
     {
         res.status(400).json({ error: e.message });

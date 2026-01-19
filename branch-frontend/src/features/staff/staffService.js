@@ -1,12 +1,10 @@
 import api from '../../api/client';
 
 // 1. GET STAFF
-export const getStaffList = async () =>
+export const getStaffList = async (showTerminated = false) =>
 {
-    const res = await api.get('/staff');
-
-    // The backend returns a flat array: [{name: "John", branchName: "Downtown"}, ...]
-    // The UI can use this directly, or use the helper below to group them.
+    // Append query param
+    const res = await api.get(`/staff?history=${showTerminated}`);
     return res.data;
 };
 
@@ -43,4 +41,26 @@ export const groupStaffByBranch = (staffList) =>
         groups[branch].push(person);
         return groups;
     }, {});
+};
+
+export const updateStaffProfile = async (id, updates) =>
+{
+    // updates = { name, phone }
+    const res = await api.patch(`/staff/${id}`, updates);
+    return res.data;
+};
+
+// 5. UPDATE ROLE
+export const updateStaffRole = async (id, role) =>
+{
+    // role = 'MANAGER'
+    const res = await api.patch(`/staff/${id}/role`, { role });
+    return res.data;
+};
+
+export const updateStaffStatus = async (id, status) =>
+{
+    // status = 'ACTIVE' | 'ON_LEAVE' | 'INACTIVE'
+    const res = await api.patch(`/staff/${id}/status`, { status });
+    return res.data;
 };
