@@ -243,9 +243,11 @@ router.delete("/items/batch", async (req, res) =>
 // --- Public / POS View ---
 router.get("/items/public", async (req, res) =>
 {
+    const { branchId, role } = req.context;
+    const enforcementBranchId = role === 'OWNER' ? null : branchId;
     try
     {
-        const result = await listPublicMenuItems({ branchId: req.context.branchId });
+        const result = await listPublicMenuItems({ branchId: enforcementBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -253,9 +255,11 @@ router.get("/items/public", async (req, res) =>
 // --- Admin View ---
 router.get("/items", async (req, res) =>
 {
+    const { branchId, role } = req.context;
+    const enforcementBranchId = role === 'OWNER' ? null : branchId;
     try
     {
-        const result = await listMenuItems({ branchId: req.context.branchId });
+        const result = await listMenuItems({ branchId: enforcementBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -265,10 +269,12 @@ router.post("/items", async (req, res) =>
 {
     try
     {
+        const { branchId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
         const result = await createMenuItem({
             ...req.body,
             actorId: req.context.actorId,
-            branchId: req.context.branchId
+            branchId: enforcementBranchId
         });
         res.status(201).json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -278,11 +284,13 @@ router.patch("/items/:id", async (req, res) =>
 {
     try
     {
+        const { branchId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
         const result = await updateMenuItemDetails({
             itemId: req.params.id,
             updates: req.body,
             actorId: req.context.actorId,
-            branchId: req.context.branchId
+            branchId: enforcementBranchId
         });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -326,9 +334,11 @@ router.get("/items/:itemId/recipe", async (req, res) =>
 {
     try
     {
+        const { branchId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
         const result = await getRecipeDetails({
             menuItemId: req.params.itemId,
-            branchId: req.context.branchId
+            branchId: enforcementBranchId
         });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
@@ -339,12 +349,14 @@ router.put("/items/:itemId/recipe", async (req, res) =>
 {
     try
     {
+        const { branchId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
         // Handles Instructions + Ingredients (Add/Remove/Update/Replace)
         const result = await editRecipe({
             menuItemId: req.params.itemId,
             ...req.body,
             actorId: req.context.actorId,
-            branchId: req.context.branchId
+            branchId: enforcementBranchId
         });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }

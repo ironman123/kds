@@ -15,6 +15,16 @@ export async function getIngredientsForRecipe(recipeId)
   return rows.map(mapRowToIngredient);
 }
 
+export async function getIngredientsForRecipes(recipeIds)
+{
+  const rows = await db('recipe_ingredients')
+    .whereIn('recipe_id', recipeIds)
+    .whereNull('deleted_at')
+    .select('*');
+
+  return rows.map(mapRowToIngredient);
+}
+
 export async function getIngredientById(ingredientId)
 {
   const row = await db('recipe_ingredients')
@@ -89,10 +99,32 @@ export async function insertIngredientsBatch(ingredients)
       recipe_id: ing.recipeId,
       ingredient: ing.ingredient,
       quantity: ing.quantity,
-      updated_at: now,      // ✅ SYNC
+      updated_at: now,
       deleted_at: null
     }))
   );
+}
+
+// 🛑 THE NUCLEAR OPTION: Used by Owner to reset ingredients across branches
+export async function deleteAllIngredientsForRecipes(recipeIds)
+{
+  await db('recipe_ingredients')
+    .whereIn('recipe_id', recipeIds)
+    .update({
+      deleted_at: Date.now(),
+      updated_at: Date.now()
+    });
+}
+
+// Helper: Delete for single recipe
+export async function deleteAllIngredientsForRecipe(recipeId)
+{
+  await db('recipe_ingredients')
+    .where('recipe_id', recipeId)
+    .update({
+      deleted_at: Date.now(),
+      updated_at: Date.now()
+    });
 }
 
 // Soft delete batch
@@ -106,27 +138,6 @@ export async function deleteIngredientsBatch(ingredientIds)
     });
 }
 
-// Soft delete batch by recipes (The "Nuclear Option")
-export async function deleteAllIngredientsForRecipes(recipeIds)
-{
-  await db('recipe_ingredients')
-    .whereIn('recipe_id', recipeIds)
-    .update({
-      deleted_at: Date.now(),
-      updated_at: Date.now()
-    });
-}
-
-// Helper alias
-export async function deleteAllIngredientsForRecipe(recipeId)
-{
-  await db('recipe_ingredients')
-    .where('recipe_id', recipeId)
-    .update({
-      deleted_at: Date.now(),
-      updated_at: Date.now()
-    });
-}
 
 /* ============================================================
    HELPER
@@ -142,3 +153,4 @@ function mapRowToIngredient(row)
     deletedAt: row.deleted_at
   };
 }
+

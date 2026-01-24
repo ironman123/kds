@@ -44,8 +44,7 @@ async function getItemOrThrow(itemId, branchId)
 // 🛡️ SECURITY: Requires branchId to ensure Tenant Isolation
 export async function assertItemExists(itemId, branchId)
 {
-    if (!branchId) throw new Error("Branch ID is required to verify item existence");
-
+    //if (!branchId) throw new Error("Branch ID is required to verify item existence");
     // We use the existing repo function which already has the JOIN check
     const item = await getMenuItemById(itemId, branchId);
 
@@ -152,7 +151,6 @@ export async function createMenuItem({ categoryId, name, price, prepTime, recipe
 export async function createMenuItemForBranches({ categoryName, name, price, prepTime, recipeInstructions, ingredients, targetBranchIds, actorId })
 {
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
-
     // FAIL FAST
     if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0) throw new Error("Target branches required (Array)");
     if (!name) throw new Error("Item name is required");
@@ -263,13 +261,13 @@ export async function createMenuItemForBranches({ categoryName, name, price, pre
 
 export async function listMenuItems({ branchId })
 {
-    if (!branchId) throw new Error("Branch ID is required");
+    //if (!branchId) throw new Error("Branch ID is required");
     return listMenuItemsRepo(branchId, false);
 }
 
 export async function listPublicMenuItems({ branchId })
 {
-    if (!branchId) throw new Error("Branch ID is required");
+    //if (!branchId) throw new Error("Branch ID is required");
     return listMenuItemsRepo(branchId, true);
 }
 

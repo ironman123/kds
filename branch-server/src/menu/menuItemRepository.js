@@ -1,5 +1,7 @@
 // src/menu/menuItemRepository.js
 import db from "../db.js";
+import { getRecipeByMenuItemId } from "./recipeRepository.js";
+import { getIngredientsForRecipe } from "./recipeIngredientRepository.js";
 
 /* ============================================================
    READ OPERATIONS
@@ -7,15 +9,87 @@ import db from "../db.js";
 
 export async function getMenuItemById(itemId, branchId)
 {
-  const row = await db('menu_items')
+  const query = db('menu_items')
     .join('menu_categories', 'menu_items.category_id', 'menu_categories.id')
-    .select('menu_items.*', 'menu_categories.name as category_name')
+    .leftJoin('branch', 'menu_categories.branch_id', 'branch.id') // 👈 JOIN BRANCH
+    .select(
+      'menu_items.*',
+      'menu_categories.name as category_name',
+      'menu_categories.branch_id',
+      'branch.name as branch_name' // 👈 SELECT BRANCH NAME
+    )
     .where('menu_items.id', itemId)
-    .andWhere('menu_categories.branch_id', branchId)
-    .whereNull('menu_items.deleted_at') // 🛡️ SYNC: Hide ghosts
+    .whereNull('menu_items.deleted_at')
     .first();
 
-  return row ? mapRowToItem(row) : null;
+  // 🧠 FIX: Only enforce branch check if NOT Owner (Manager context)
+  if (branchId)
+  {
+    query.where('menu_categories.branch_id', branchId);
+  }
+
+  const row = await query;
+  if (!row) return null;
+
+  const item = mapRowToItem(row);
+
+  // 🧠 FETCH RECIPE
+  const recipe = await getRecipeByMenuItemId(item.id, branchId || item.branchId); // Use item.branchId if global
+  if (recipe)
+  {
+    const ingredients = await getIngredientsForRecipe(recipe.id);
+    item.recipe = { ...recipe, ingredients };
+  }
+
+  return item;
+}
+
+export async function listMenuItemsRepo(branchId, onlyAvailable = false)
+{
+  const query = db('menu_items')
+    .join('menu_categories', 'menu_items.category_id', 'menu_categories.id')
+    .leftJoin('branch', 'menu_categories.branch_id', 'branch.id') // 👈 JOIN BRANCH
+    .select(
+      'menu_items.*',
+      'menu_categories.name as category_name',
+      'menu_categories.branch_id',
+      'branch.name as branch_name'
+    )
+    .whereNull('menu_items.deleted_at')
+    .orderBy('branch.name') // Group by branch first for cleaner data
+    .orderBy('menu_categories.sort_order')
+    .orderBy('menu_items.name');
+
+  // 🧠 FIX: Handle Owner (null branchId)
+  if (branchId)
+  {
+    query.where('menu_categories.branch_id', branchId);
+  }
+
+  if (onlyAvailable)
+  {
+    query.where('menu_items.available', 1);
+    query.andWhere('menu_categories.available', 1);
+  }
+
+  const rows = await query;
+
+  // 🧠 OPTIMIZATION: Fetch recipes in parallel
+  const items = await Promise.all(rows.map(async (row) =>
+  {
+    const item = mapRowToItem(row);
+    // Optional: Only fetch recipe for single item view to save performance?
+    // For now, we fetch it as requested.
+    const recipe = await getRecipeByMenuItemId(item.id, item.branchId);
+    if (recipe)
+    {
+      const ingredients = await getIngredientsForRecipe(recipe.id);
+      item.recipe = { ...recipe, ingredients };
+    }
+    return item;
+  }));
+
+  return items;
 }
 
 export async function getMenuItemByNameInCategory(name, categoryId, branchId)
@@ -30,26 +104,6 @@ export async function getMenuItemByNameInCategory(name, categoryId, branchId)
     .first();
 
   return row ? mapRowToItem(row) : null;
-}
-
-export async function listMenuItemsRepo(branchId, onlyAvailable = false)
-{
-  const query = db('menu_items')
-    .join('menu_categories', 'menu_items.category_id', 'menu_categories.id')
-    .select('menu_items.*', 'menu_categories.name as category_name')
-    .where('menu_categories.branch_id', branchId)
-    .whereNull('menu_items.deleted_at') // 🛡️ SYNC
-    .orderBy('menu_categories.sort_order')
-    .orderBy('menu_items.name');
-
-  if (onlyAvailable)
-  {
-    query.where('menu_items.available', 1);
-    query.andWhere('menu_categories.available', 1);
-  }
-
-  const rows = await query;
-  return rows.map(mapRowToItem);
 }
 
 export async function findItemsByNameInBranches(name, branchIds)
@@ -189,6 +243,8 @@ function mapRowToItem(row)
 {
   return {
     id: row.id,
+    branchId: row.branch_id,     // 👈 Added
+    branchName: row.branch_name, // 👈 Added
     categoryId: row.category_id,
     categoryName: row.category_name,
     name: row.name,
@@ -196,7 +252,6 @@ function mapRowToItem(row)
     available: row.available === 1,
     prepTime: row.prep_time,
     createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at
+    updatedAt: row.updated_at
   };
 }

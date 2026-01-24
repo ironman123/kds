@@ -5,7 +5,7 @@ import db from "../db.js"
 
 const router = express.Router();
 
-const THIS_SERVER_BRANCH_ID = "B3"; //DELETEME
+const THIS_SERVER_BRANCH_ID = "B2"; //DELETEME
 /* ============================================================
    PUBLIC ROUTES (No Token Needed)
 ============================================================ */

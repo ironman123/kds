@@ -410,6 +410,7 @@ export default function CategoryManagement()
 }
 
 // --- ADD MODAL ---
+// --- UPDATED ADD MODAL ---
 function AddCategoryModal({ onClose, onSuccess })
 {
     const { user } = useUserStore();
@@ -418,6 +419,7 @@ function AddCategoryModal({ onClose, onSuccess })
     const [availableBranches, setAvailableBranches] = useState([]);
     const [loadingBranches, setLoadingBranches] = useState(false);
 
+    // Fetch branches if Owner
     useEffect(() =>
     {
         if (user.role === 'OWNER')
@@ -455,52 +457,187 @@ function AddCategoryModal({ onClose, onSuccess })
         }
     };
 
+    // Toggle individual branch
     const toggleBranch = (id) =>
     {
         if (selectedBranches.includes(id))
         {
-            setSelectedBranches(selectedBranches.filter(b => b !== id));
+            setSelectedBranches(prev => prev.filter(b => b !== id));
         } else
         {
-            setSelectedBranches([...selectedBranches, id]);
+            setSelectedBranches(prev => [...prev, id]);
         }
     };
 
+    // Toggle a whole group (Location)
+    const toggleGroup = (groupBranches) =>
+    {
+        const groupIds = groupBranches.map(b => b.id);
+        const allSelected = groupIds.every(id => selectedBranches.includes(id));
+
+        if (allSelected)
+        {
+            // Deselect all in this group
+            setSelectedBranches(prev => prev.filter(id => !groupIds.includes(id)));
+        } else
+        {
+            // Select all in this group (merge unique)
+            setSelectedBranches(prev => [...new Set([...prev, ...groupIds])]);
+        }
+    };
+
+    // Grouping Logic
+    const groupedBranches = useMemo(() =>
+    {
+        return availableBranches.reduce((acc, branch) =>
+        {
+            // Use branch.location or fallback to 'General' if your API doesn't have it yet
+            const loc = branch.location || branch.city || "All Locations";
+            if (!acc[loc]) acc[loc] = [];
+            acc[loc].push(branch);
+            return acc;
+        }, {});
+    }, [availableBranches]);
+
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-            <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold text-gray-800">New Category</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+            {/* Widened modal to max-w-4xl for the 2-column layout */}
+            <div className="bg-white rounded-xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh]">
+
+                {/* Header */}
+                <div className="flex justify-between items-center p-6 border-b border-gray-100">
+                    <h2 className="text-xl font-bold text-gray-800">Add New Category</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">✕</button>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1">Category Name</label>
-                        <input required autoFocus placeholder="e.g. Pizza, Drinks" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none" value={name} onChange={e => setName(e.target.value)} />
-                    </div>
-                    {user.role === 'OWNER' && (
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">Available in Branches</label>
-                            {loadingBranches ? <p className="text-xs text-gray-400">Loading...</p> : (
-                                <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-100 rounded-lg p-2 bg-gray-50">
-                                    {availableBranches.map(branch => (
-                                        <div key={branch.id} onClick={() => toggleBranch(branch.id)} className="flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-white transition">
-                                            <div className={clsx("w-5 h-5 rounded border flex items-center justify-center transition-colors", { "bg-yellow-500 border-yellow-500 text-white": selectedBranches.includes(branch.id), "bg-white border-gray-300": !selectedBranches.includes(branch.id) })}>
-                                                {selectedBranches.includes(branch.id) && <Check size={14} strokeWidth={3} />}
-                                            </div>
-                                            <span className="text-sm text-gray-700 font-medium">{branch.name}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            <p className="text-xs text-gray-400 mt-2">Selected: {selectedBranches.length} branches</p>
+
+                <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col md:flex-row">
+
+                    {/* LEFT COLUMN: Input Details */}
+                    <div className="md:w-1/3 p-6 border-r border-gray-100 bg-gray-50/50">
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">
+                                    Category Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    required
+                                    autoFocus
+                                    placeholder="e.g. Pizza, Burgers, Salads"
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition shadow-sm"
+                                    value={name}
+                                    onChange={e => setName(e.target.value)}
+                                />
+                                <p className="text-xs text-gray-400 mt-2">
+                                    This name will be visible on the POS and KDS screens.
+                                </p>
+                            </div>
                         </div>
-                    )}
-                    <div className="flex gap-3 pt-4 border-t border-gray-100">
-                        <button type="button" onClick={onClose} className="flex-1 p-3 text-gray-700 bg-gray-100 hover:bg-gray-200 font-semibold rounded-lg transition">Cancel</button>
-                        <button type="submit" className="flex-1 p-3 bg-yellow-500 text-white font-bold rounded-lg hover:bg-yellow-600 shadow-md hover:shadow-lg transition">Create</button>
+                    </div>
+
+                    {/* RIGHT COLUMN: Branch Selection */}
+                    <div className="md:w-2/3 p-6 overflow-y-auto bg-white">
+                        {user.role === 'OWNER' ? (
+                            <>
+                                <div className="mb-4">
+                                    <label className="block text-sm font-bold text-gray-700">
+                                        Select Branches <span className="text-red-500">*</span> <span className="font-normal text-gray-500">(Grouped by Location)</span>
+                                    </label>
+                                </div>
+
+                                {loadingBranches ? (
+                                    <div className="flex items-center justify-center h-40 text-gray-400">Loading branches...</div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        {Object.entries(groupedBranches).map(([location, branches]) =>
+                                        {
+                                            const allSelected = branches.every(b => selectedBranches.includes(b.id));
+
+                                            return (
+                                                <div key={location}>
+                                                    {/* Group Header */}
+                                                    <div className="flex justify-between items-center mb-2 px-1">
+                                                        <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                                            <MapPin size={14} className="text-gray-400" />
+                                                            {location}
+                                                            <span className="text-xs font-normal text-gray-400">({branches.length})</span>
+                                                        </h4>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleGroup(branches)}
+                                                            className={clsx("text-xs font-semibold hover:underline", {
+                                                                "text-yellow-600": !allSelected,
+                                                                "text-gray-400": allSelected
+                                                            })}
+                                                        >
+                                                            {allSelected ? "Deselect All" : "Select All"}
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Branch Cards */}
+                                                    <div className="space-y-2">
+                                                        {branches.map(branch =>
+                                                        {
+                                                            const isSelected = selectedBranches.includes(branch.id);
+                                                            return (
+                                                                <div
+                                                                    key={branch.id}
+                                                                    onClick={() => toggleBranch(branch.id)}
+                                                                    className={clsx("border rounded-lg p-3 cursor-pointer transition-all flex items-start gap-3 group", {
+                                                                        "border-yellow-300 bg-yellow-50 shadow-sm": isSelected,
+                                                                        "border-gray-200 hover:border-gray-300 hover:bg-gray-50": !isSelected
+                                                                    })}
+                                                                >
+                                                                    {/* Checkbox Visual */}
+                                                                    <div className={clsx("mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0", {
+                                                                        "bg-blue-600 border-blue-600 text-white": isSelected, // Checkbox uses Blue like reference? Or yellow?
+                                                                        "bg-white border-gray-300 group-hover:border-gray-400": !isSelected
+                                                                    })}>
+                                                                        {isSelected && <Check size={14} strokeWidth={3} />}
+                                                                    </div>
+
+                                                                    <div>
+                                                                        <div className={clsx("text-sm font-semibold", isSelected ? "text-gray-900" : "text-gray-700")}>
+                                                                            {branch.name}
+                                                                        </div>
+                                                                        <div className="text-xs text-gray-500 mt-0.5">
+                                                                            {branch.address || "Location details unavailable"}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 p-8 bg-gray-50 rounded-lg border border-dashed">
+                                <MapPin size={32} className="text-gray-300 mb-2" />
+                                <p>You are adding this category to your current branch only.</p>
+                            </div>
+                        )}
                     </div>
                 </form>
+
+                {/* Footer Buttons */}
+                <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-white rounded-b-xl">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 font-semibold rounded-lg transition"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSubmit}
+                        className="px-6 py-2.5 bg-yellow-600 text-white font-bold rounded-lg hover:bg-yellow-700 shadow-md hover:shadow-lg transition flex items-center gap-2"
+                    >
+                        <Plus size={18} /> Create Category
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -548,7 +685,7 @@ function EditCategoryModal({ item, mode, onClose, onSuccess })
                         <input required className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={name} onChange={e => setName(e.target.value)} />
                     </div>
                     {mode === 'CATEGORY' && (
-                        <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                        <div className="text-xs text-yellow-600 bg-yellow-50 p-2 rounded">
                             ⚠️ This will rename "{item.name}" in all {item.totalCount} branches.
                         </div>
                     )}

@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardLayout from './layouts/DashboardLayout';
 import StaffManagement from './features/staff/StaffManagement';
 import CategoryManagement from './features/menu/categoryManagement';
+import MenuItemManagement from './features/menu/menuItemManagement';
 
 // Placeholder Pages (We will replace 'OrderInterface' next)
 const OrderInterface = () => <h2>🍔 Taking Orders (POS)</h2>;
@@ -41,6 +42,7 @@ export default function App()
 
           <Route path="kds" element={<KitchenDisplay />} />
           <Route path="category" element={<CategoryManagement />} />
+          <Route path="items" element={<MenuItemManagement />} />
 
           <Route path="staff" element={<StaffManagement />} />
           <Route path="settings" element={<Settings />} />

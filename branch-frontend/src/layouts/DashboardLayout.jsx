@@ -52,6 +52,12 @@ export default function DashboardLayout()
             roles: ['OWNER', 'MANAGER', 'CHEF', 'WAITER', 'CAPTAIN']
         },
         {
+            label: 'Menu Items',
+            icon: <List size={20} />,
+            path: '/dashboard/items',
+            roles: ['OWNER', 'MANAGER', 'CHEF', 'WAITER', 'CAPTAIN']
+        },
+        {
             label: 'Staff',
             icon: <Users size={20} />,
             path: '/dashboard/staff',
