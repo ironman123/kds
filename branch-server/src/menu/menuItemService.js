@@ -24,8 +24,8 @@ import { STAFF_ROLE, assertStaffRole } from "../staff/staffRoles.js";
 import { assertBranchExists } from "../infra/branchService.js";
 import { logMenuEvent } from "./menuEventRepository.js";
 import { runInTransaction } from "../infra/transactionManager.js";
-import { insertRecipe } from "./recipeRepository.js";
-import { insertIngredient } from "./recipeIngredientRepository.js";
+import { insertRecipe, getRecipeByMenuItemId, deleteRecipeRepo } from "./recipeRepository.js";
+import { insertIngredient, deleteAllIngredientsForRecipe } from "./recipeIngredientRepository.js";
 
 /* ============================================================
    PRIVATE HELPER
@@ -47,7 +47,6 @@ export async function assertItemExists(itemId, branchId)
     //if (!branchId) throw new Error("Branch ID is required to verify item existence");
     // We use the existing repo function which already has the JOIN check
     const item = await getMenuItemById(itemId, branchId);
-
     if (!item)
     {
         throw new Error("Menu item not found in this branch");
@@ -469,23 +468,43 @@ export async function moveMenuItemForBranches({ name, targetCategoryName, target
    DELETE (Single & Batch)
 ============================================================ */
 
+/* ============================================================
+   DELETE (Single & Batch) - With Recipe/Ingredient Cleanup
+============================================================ */
+
 export async function deleteMenuItem({ itemId, branchId, actorId })
 {
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
 
     const item = await getItemOrThrow(itemId, branchId);
 
-    await deleteMenuItemRepo(itemId);
+    // 1. Fetch Recipe (to get ID for ingredient deletion)
+    const recipe = await getRecipeByMenuItemId(itemId, branchId);
 
-    await logMenuEvent({
-        id: crypto.randomUUID(),
-        entityType: "ITEM",
-        entityId: itemId,
-        type: "DELETED",
-        oldValue: item.name,
-        newValue: "DELETED",
-        actorId,
-        createdAt: Date.now()
+    await runInTransaction(async () =>
+    {
+        // 2. Delete Ingredients & Recipe (if they exist)
+        if (recipe)
+        {
+            await deleteAllIngredientsForRecipe(recipe.id);
+            await deleteRecipeRepo(recipe.id);
+        }
+
+        // 3. Delete the Item
+        await deleteMenuItemRepo(itemId);
+
+        // 4. Log Event
+        await logMenuEvent({
+            id: crypto.randomUUID(),
+            branchId, // Ensure branchId is logged if available
+            entityType: "ITEM",
+            entityId: itemId,
+            type: "DELETED",
+            oldValue: item.name,
+            newValue: "DELETED",
+            actorId,
+            createdAt: Date.now()
+        });
     });
 
     return { ok: true };
@@ -494,28 +513,54 @@ export async function deleteMenuItem({ itemId, branchId, actorId })
 export async function deleteMenuItemForBranches({ name, targetBranchIds, actorId })
 {
     await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+
     if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0)
     {
         throw new Error("Target branch IDs required (Array)");
     }
 
+    // 1. Find Items
     const targetItems = await findItemsByNameInBranches(name, targetBranchIds);
     const targetItemIds = targetItems.map(t => t.id);
 
     if (targetItemIds.length === 0) return { ok: true, message: "No items found." };
 
-    const deletedCount = await deleteMenuItemsBatch(targetItemIds);
+    // 2. Find Associated Recipes (to delete ingredients)
+    const targetRecipes = await findRecipeIdsByItemName(name, targetBranchIds);
+    const targetRecipeIds = targetRecipes.map(r => r.id);
 
+    let deletedCount = 0;
+
+    await runInTransaction(async () =>
+    {
+        // A. Delete Ingredients (The "Nuclear" Option)
+        if (targetRecipeIds.length > 0)
+        {
+            await deleteAllIngredientsForRecipes(targetRecipeIds);
+        }
+
+        // B. Delete Recipes
+        // We can delete by item IDs to be safe/efficient
+        if (targetItemIds.length > 0)
+        {
+            await deleteRecipesByItemIds(targetItemIds);
+        }
+
+        // C. Delete Items
+        deletedCount = await deleteMenuItemsBatch(targetItemIds);
+    });
+
+    // 3. Log Event
     await logMenuEvent({
         id: crypto.randomUUID(),
         entityType: "ITEM",
         entityId: "BATCH_OPERATION",
         type: "BATCH_DELETED",
         oldValue: name,
-        newValue: JSON.stringify({ count: deletedCount }),
+        newValue: JSON.stringify({ count: deletedCount, recipeCount: targetRecipeIds.length }),
         actorId,
         createdAt: Date.now()
     });
 
-    return { ok: true, message: `Deleted '${name}' from ${deletedCount} locations.` };
+    return { ok: true, message: `Deleted '${name}' (and associated recipes) from ${deletedCount} locations.` };
 }

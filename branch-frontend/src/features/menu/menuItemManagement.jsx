@@ -3,7 +3,8 @@ import
 {
     Plus, Edit2, Trash2, Layers, MapPin, Search, Check,
     DollarSign, Clock, ChefHat, List, Utensils,
-    Coffee, IceCream, Pizza, Sandwich, Soup, Beef, Salad, Beer, Cake, Wheat, Croissant
+    Coffee, IceCream, Pizza, Sandwich, Soup, Beef, Salad, Beer, Cake, Wheat, Croissant,
+    Power
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import
@@ -13,13 +14,13 @@ import
     deleteMenuItem, deleteMenuItemBatch,
     getRecipeDetails, updateRecipeSingle, updateRecipeBatch
 } from './menuItemService';
-import { getCategories } from './menuService'; // Reusing Category Service
+import { getCategories } from './menuService';
 import useUserStore from '../../store/userStore';
 import api from '../../api/client';
 import clsx from 'clsx';
 import '../../styles/pos.css';
 
-// --- HELPER: Icons (Reused) ---
+// --- HELPER: Icons ---
 const getCategoryIcon = (name) =>
 {
     if (!name) return <Utensils size={20} />;
@@ -35,7 +36,7 @@ export default function MenuItemManagement()
 {
     const { user } = useUserStore();
     const [items, setItems] = useState([]);
-    const [categories, setCategories] = useState([]); // Needed for dropdowns
+    const [categories, setCategories] = useState([]);
     const [viewMode, setViewMode] = useState('ITEM'); // 'ITEM' (Batch) | 'BRANCH' (Single)
     const [showModal, setShowModal] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
@@ -62,12 +63,14 @@ export default function MenuItemManagement()
         }
     };
 
+    // --- ACTIONS ---
+
     const handleDelete = async (item) =>
     {
-        if (!confirm(`Delete '${item.name}'?`)) return;
+        if (!confirm(`Delete '${item.name}'? This action cannot be undone.`)) return;
         try
         {
-            if (viewMode === 'ITEM')
+            if (viewMode === 'ITEM' && user.role === 'OWNER')
             {
                 await deleteMenuItemBatch({
                     name: item.name,
@@ -76,13 +79,44 @@ export default function MenuItemManagement()
                 toast.success(`Deleted ${item.name} from all branches`);
             } else
             {
-                await deleteMenuItem(item.id);
+                // Single Delete
+                await deleteMenuItem(item.ids);
                 toast.success("Item deleted");
             }
             loadData();
         } catch (err)
         {
             toast.error("Failed to delete item");
+        }
+    };
+
+    const handleToggleAvailability = async (item) =>
+    {
+        try
+        {
+            const newStatus = !item.available;
+
+            if (viewMode === 'ITEM' && user.role === 'OWNER')
+            {
+                // Batch Toggle
+                await updateMenuItemBatch({
+                    name: item.name,
+                    updates: { available: newStatus },
+                    targetBranchIds: item.branches.map(b => b.branchId)
+                });
+                toast.success(`Item ${newStatus ? 'Enabled' : 'Disabled'} in ${item.branches.length} locations`);
+            } else
+            {
+                // Single Toggle
+                console.log(item.ids);
+                await updateMenuItemDetails(item.ids, { available: newStatus });
+                toast.success(`Item ${newStatus ? 'Enabled' : 'Disabled'}`);
+            }
+            loadData(); // Refresh UI
+        } catch (err)
+        {
+            console.error(err);
+            toast.error("Failed to update availability");
         }
     };
 
@@ -104,7 +138,7 @@ export default function MenuItemManagement()
             }, {});
         } else
         {
-            // Group by Item Name (Batch View)
+            // Group by Item Name (Batch View for Owner)
             const groups = filtered.reduce((acc, item) =>
             {
                 if (!acc[item.name])
@@ -113,6 +147,7 @@ export default function MenuItemManagement()
                         name: item.name,
                         price: item.price,
                         categoryName: item.categoryName || 'Uncategorized',
+                        available: item.available, // Use availability of the first item found
                         ids: [],
                         branches: [],
                         count: 0
@@ -122,7 +157,7 @@ export default function MenuItemManagement()
                 acc[item.name].branches.push({
                     name: item.branchName,
                     branchId: item.branchId,
-                    price: item.price // Track price variance if needed
+                    price: item.price
                 });
                 acc[item.name].count++;
                 return acc;
@@ -135,16 +170,18 @@ export default function MenuItemManagement()
     const ItemCard = ({ item }) =>
     {
         const isBatch = viewMode === 'ITEM';
+
         return (
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition relative group">
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition relative group flex flex-col h-full">
+                {/* Content Top */}
                 <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600">
                             {getCategoryIcon(item.categoryName)}
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800">{item.name}</h3>
-                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                            <h3 className="font-bold text-gray-800 leading-tight">{item.name}</h3>
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full inline-block mt-1">
                                 {item.categoryName}
                             </span>
                         </div>
@@ -161,24 +198,56 @@ export default function MenuItemManagement()
                     </div>
                 </div>
 
+                {/* Batch Info (If applicable) */}
                 {isBatch && (
-                    <div className="mt-3 pt-3 border-t border-gray-50 text-xs text-gray-500">
-                        <div className="flex items-center gap-1 mb-1">
-                            <MapPin size={12} className="text-gray-400" />
-                            <span className="font-medium">{item.count} Locations</span>
+                    <div className="mt-2 text-xs text-gray-500 flex-1">
+                        <div className="flex items-center gap-1 mb-1 text-orange-600 font-medium">
+                            <MapPin size={12} />
+                            <span>Active in {item.count} branches</span>
                         </div>
                         <div className="flex flex-wrap gap-1">
-                            {item.branches.slice(0, 3).map((b, i) => (
+                            {item.branches.slice(0, 2).map((b, i) => (
                                 <span key={i} className="px-1.5 py-0.5 bg-gray-50 border rounded text-[10px]">{b.name}</span>
                             ))}
-                            {item.branches.length > 3 && <span className="px-1.5 py-0.5 bg-gray-50 border rounded text-[10px]">+{item.branches.length - 3}</span>}
+                            {item.branches.length > 2 && <span className="px-1.5 py-0.5 bg-yellow-50 text-yellow-700 border border-yellow-100 rounded text-[10px] font-bold">+{item.branches.length - 2} more</span>}
                         </div>
                     </div>
                 )}
 
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    <button onClick={() => setEditingItem(item)} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100"><Edit2 size={14} /></button>
-                    <button onClick={() => handleDelete(item)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100"><Trash2 size={14} /></button>
+                {/* ACTION FOOTER (The Buttons) */}
+                <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                    {/* Toggle Button */}
+                    <button
+                        onClick={() => handleToggleAvailability(item)}
+                        className={clsx("w-9 h-9 flex items-center justify-center rounded-lg border transition",
+                            item.available
+                                ? "border-gray-200 text-green-600 hover:bg-green-50"
+                                : "border-gray-200 text-gray-400 hover:bg-gray-100"
+                        )}
+                        title={item.available ? "Disable Item" : "Enable Item"}
+                    >
+                        <Power size={16} strokeWidth={2.5} />
+                    </button>
+
+                    <div className="flex gap-2">
+                        {/* Edit Button */}
+                        <button
+                            onClick={() => setEditingItem(item)}
+                            className="w-9 h-9 flex items-center justify-center rounded-lg border border-blue-100 text-blue-600 bg-blue-50 hover:bg-blue-100 transition"
+                            title="Edit Item"
+                        >
+                            <Edit2 size={16} strokeWidth={2.5} />
+                        </button>
+
+                        {/* Delete Button */}
+                        <button
+                            onClick={() => handleDelete(item)}
+                            className="w-9 h-9 flex items-center justify-center rounded-lg border border-red-100 text-red-600 bg-red-50 hover:bg-red-100 transition"
+                            title="Delete Item"
+                        >
+                            <Trash2 size={16} strokeWidth={2.5} />
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -279,22 +348,18 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
         if (isEdit)
         {
             // SCENARIO 1: Single Edit (Manager OR Owner in Branch View)
-            // We check if it's NOT batch mode OR if the user is NOT an owner
             if (mode !== 'ITEM' || user.role !== 'OWNER')
             {
-                // If in ITEM view, Manager gets a group object without 'id', but with 'ids' array.
-                // We grab the first ID from the array if 'id' is missing.
                 const targetId = item.id || (item.ids && item.ids[0]);
                 if (targetId) loadRecipeData(targetId);
             }
             // SCENARIO 2: Batch Edit (Owner in Item View)
             else if (mode === 'ITEM' && item.ids && item.ids.length > 0)
             {
-                loadRecipeData(item.ids[0]);
+                loadRecipeData(item.ids[0]); // Load first item's recipe as template
             }
         }
-
-        // SCENARIO 3: New Item (Owner Context needs Branches)
+        // SCENARIO 3: New Item (Owner)
         else if (user.role === 'OWNER')
         {
             setLoadingBranches(true);
@@ -324,7 +389,6 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
 
                 if (user.role === 'OWNER')
                 {
-                    // BATCH CREATE
                     if (selectedBranches.length === 0) return toast.error("Select at least one branch");
                     const selectedCat = categories.find(c => c.id === formData.categoryId || c.name === formData.categoryName);
                     if (!selectedCat) return toast.error("Please select a valid category");
@@ -336,7 +400,6 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                     });
                 } else
                 {
-                    // SINGLE CREATE
                     await createMenuItemSingle({
                         ...payload,
                         categoryId: formData.categoryId
@@ -346,8 +409,6 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
             } else
             {
                 // --- EDIT ---
-
-                // 🛑 FIX: Only run Batch Logic if user is OWNER AND in Item Mode
                 const isBatchOperation = user.role === 'OWNER' && mode === 'ITEM';
 
                 if (isBatchOperation)
@@ -359,7 +420,7 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                         targetBranchIds: item.branches.map(b => b.branchId)
                     });
 
-                    // Only update recipe if tab was visited or data exists
+                    // Update recipe if data exists (Safe Batch Update)
                     if (formData.instructions || formData.ingredients.length > 0)
                     {
                         await updateRecipeBatch({
@@ -372,12 +433,8 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                     toast.success(`Updated ${item.name} in ${item.branches.length} locations`);
                 } else
                 {
-                    // SINGLE EDIT (Managers Fallback Here)
-
-                    // If Manager is in 'ITEM' view, item is a group object. We need the specific ID.
-                    // Since Managers only see 1 branch, items.ids[0] is the correct ID.
+                    // SINGLE EDIT
                     const targetId = item.id || (item.ids && item.ids[0]);
-
                     if (!targetId) return toast.error("Cannot find item ID for update");
 
                     await updateMenuItemDetails(targetId, {
@@ -423,7 +480,6 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
                 </div>
 
-                {/* TABS */}
                 <div className="flex border-b bg-gray-50/50">
                     <button onClick={() => setTab('DETAILS')} className={clsx("flex-1 py-3 text-sm font-bold border-b-2 transition", tab === 'DETAILS' ? "border-orange-500 text-orange-600 bg-white" : "border-transparent text-gray-500")}>Details</button>
                     <button onClick={() => setTab('RECIPE')} className={clsx("flex-1 py-3 text-sm font-bold border-b-2 transition", tab === 'RECIPE' ? "border-orange-500 text-orange-600 bg-white" : "border-transparent text-gray-500")}>Recipe</button>
@@ -432,7 +488,6 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6">
                     {tab === 'DETAILS' && (
                         <div className="space-y-5">
-                            {/* Warning for Batch Mode (Only show if Owner) */}
                             {isEdit && mode === 'ITEM' && user.role === 'OWNER' && (
                                 <div className="bg-blue-50 text-blue-700 p-3 rounded-lg text-xs flex gap-2 items-center border border-blue-100">
                                     <Layers size={14} />
@@ -463,7 +518,6 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                                             const cat = categories.find(c => c.id === val || c.name === val);
                                             setFormData({ ...formData, categoryId: cat?.id, categoryName: cat?.name });
                                         }}
-                                        // Disable change if Owner in Batch mode (moves not supported here yet)
                                         disabled={isEdit && mode === 'ITEM' && user.role === 'OWNER'}
                                     >
                                         <option value="">Select Category...</option>
@@ -478,7 +532,6 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                                 </div>
                             </div>
 
-                            {/* OWNER CREATE BRANCH SELECT */}
                             {!isEdit && user.role === 'OWNER' && (
                                 <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                                     <h4 className="font-bold text-sm mb-2 flex items-center gap-2"><MapPin size={16} /> Available in Branches</h4>
@@ -503,7 +556,6 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
 
                     {tab === 'RECIPE' && (
                         <div className="space-y-4">
-                            {/* Only warn owner about batch overwrites */}
                             {isEdit && mode === 'ITEM' && user.role === 'OWNER' && (
                                 <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded border border-orange-100 mb-2">
                                     Note: Editing the recipe here will <strong>overwrite</strong> the recipe for this item in all {item.count} branches.

@@ -4,7 +4,6 @@ import api from '../../api/client';
 export const getMenuItems = async () =>
 {
     const res = await api.get('/menu/items');
-    console.log(res);
     return res.data;
 };
 
@@ -19,7 +18,7 @@ export const getRecipeDetails = async (itemId) =>
 export const createMenuItemBatch = async (data) =>
 {
     // data = { categoryName, name, price, prepTime, recipeInstructions, ingredients, targetBranchIds }
-    console.log(data);
+
     const res = await api.post('/menu/items/batch', data);
     return res.data;
 };
@@ -36,7 +35,6 @@ export const createMenuItemSingle = async (data) =>
 // Single Update (Details Only)
 export const updateMenuItemDetails = async (id, updates) =>
 {
-    console.log("update Called")
     const res = await api.patch(`/menu/items/${id}`, updates);
     return res.data;
 };
