@@ -62,7 +62,7 @@ export async function createMenuItem({ categoryId, name, price, prepTime, recipe
 {
     if (!branchId) throw new Error("Branch ID is required");
     await assertBranchExists(branchId);
-    await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     // 1. FAIL FAST: Input Validation
     if (!name || typeof name !== 'string' || name.trim() === '') throw new Error("Item name is required and must be a string");
@@ -149,7 +149,7 @@ export async function createMenuItem({ categoryId, name, price, prepTime, recipe
 ============================================================ */
 export async function createMenuItemForBranches({ categoryName, name, price, prepTime, recipeInstructions, ingredients, targetBranchIds, actorId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER]);
     // FAIL FAST
     if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0) throw new Error("Target branches required (Array)");
     if (!name) throw new Error("Item name is required");
@@ -281,7 +281,7 @@ export async function getMenuItem({ itemId, branchId })
 
 export async function updateMenuItemDetails({ itemId, branchId, updates, actorId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
 
     const item = await getItemOrThrow(itemId, branchId);
 
@@ -368,7 +368,7 @@ export async function updateMenuItemDetails({ itemId, branchId, updates, actorId
 
 export async function updateMenuItemForBranches({ name, updates, targetBranchIds, actorId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER]);
 
     if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0)
     {
@@ -404,7 +404,7 @@ export async function updateMenuItemForBranches({ name, updates, targetBranchIds
 
 export async function moveMenuItemForBranches({ name, targetCategoryName, targetBranchIds, actorId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER]);
 
     if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0)
     {
@@ -474,7 +474,7 @@ export async function moveMenuItemForBranches({ name, targetCategoryName, target
 
 export async function deleteMenuItem({ itemId, branchId, actorId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
 
     const item = await getItemOrThrow(itemId, branchId);
 
@@ -512,7 +512,7 @@ export async function deleteMenuItem({ itemId, branchId, actorId })
 
 export async function deleteMenuItemForBranches({ name, targetBranchIds, actorId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER]);
 
     if (!targetBranchIds || !Array.isArray(targetBranchIds) || targetBranchIds.length === 0)
     {

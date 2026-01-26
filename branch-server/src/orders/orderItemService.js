@@ -19,7 +19,8 @@ import
 import { logOrderEvent } from "./orderEventRepository.js";
 import { markTableFree } from "../tables/tableService.js";
 
-import { assertStaffRole, STAFF_ROLE } from "../staff/staffRoles.js";
+import
+{ assertStaffRole, STAFF_ROLE } from "../staff/staffRoles.js";
 import { assertBranchExists } from "../infra/branchService.js";
 
 export async function addItemToOrder({ orderId, menuItemId, quantity, notes = "", actorId, branchId })
@@ -27,7 +28,7 @@ export async function addItemToOrder({ orderId, menuItemId, quantity, notes = ""
     // 1. Validation
     if (!branchId) throw new Error("Branch ID required");
     await assertBranchExists(branchId);
-    await assertStaffRole(actorId, [STAFF_ROLE.CAPTAIN, STAFF_ROLE.WAITER, STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.CAPTAIN, STAFF_ROLE.WAITER, STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     if (quantity <= 0) throw new Error("Quantity must be greater than zero");
 
@@ -78,10 +79,7 @@ export async function changeOrderItemStatus({ itemId, newStatus, actorId, branch
     // 1. Validation (Fast checks before starting transaction)
     if (!branchId) throw new Error("Branch ID required");
 
-    await assertStaffRole(actorId, [
-        STAFF_ROLE.OWNER, STAFF_ROLE.CAPTAIN,
-        STAFF_ROLE.KITCHEN, STAFF_ROLE.MANAGER, STAFF_ROLE.WAITER
-    ]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.CAPTAIN,STAFF_ROLE.KITCHEN, STAFF_ROLE.MANAGER, STAFF_ROLE.WAITER]);
 
     // 2. Fetch Item (Needed to validate transitions before locking DB)
     const item = await getOrderItemById(itemId);

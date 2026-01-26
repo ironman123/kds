@@ -15,7 +15,10 @@ import
 } from "./staffRepository.js";
 import { STAFF_STATUS, ALLOWED_STAFF_TRANSITIONS } from "./staffStates.js";
 import { logStaffEvent, STAFF_EVENT_TYPE } from "./staffEventRepository.js";
-import { STAFF_ROLE, assertStaffRole } from "./staffRoles.js";
+import
+{
+    STAFF_ROLE, assertStaffRole
+} from "./staffRoles.js";
 import { assertBranchExists } from "../infra/branchService.js";
 
 // Rank hierarchy: Higher number = Higher power
@@ -93,7 +96,7 @@ export async function createStaff({ name, role, phone, adhaarNumber, branchId, a
     await assertBranchExists(branchId);
 
     // 1. Authorization
-    const actor = await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
+    //const actor = await assertStaff(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
 
     // 2. Generate Credentials (THE MISSING PART)
     const username = await generateUniqueUsername(name);
@@ -182,10 +185,10 @@ export async function changeStaffStatus({ staffId, branchId, newStatus, actorId 
     if (staff.status === newStatus) return staff;
 
     // 1. Authorization
-    const actor = await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
+    const actor = //await assertStaff(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER]);
 
-    // 2. Hierarchy Check (e.g., Manager cannot Fire Owner)
-    assertHierarchy(actor.role, staff.role);
+        // 2. Hierarchy Check (e.g., Manager cannot Fire Owner)
+        assertHierarchy(actor.role, staff.role);
 
     // 3. State Machine Validation
     const validMoves = ALLOWED_STAFF_TRANSITIONS[staff.status];
@@ -217,7 +220,7 @@ export async function changeStaffRole({ staffId, branchId, newRole, actorId })
 
     // 1. Authorization: STRICTLY OWNER ONLY
     // Changing roles (Promotions) is a high-risk action.
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER]);
 
     if (staff.role === newRole) return staff;
 
@@ -244,7 +247,7 @@ export async function removeStaffMistake({ staffId, branchId, actorId })
     const staff = await getStaffOrThrow(staffId, branchId);
 
     // STRICT AUTH: Only Owners can remove staff records entirely
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER]);
 
     // Optional: Prevent deleting someone who has actually worked (has shifts/orders)
     // if (await hasStaffActivity(staffId)) throw new Error("Cannot delete active staff. Use Terminate instead.");

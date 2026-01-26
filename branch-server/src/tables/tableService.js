@@ -14,7 +14,10 @@ import
 } from "./tableRepository.js";
 import { TABLE_STATUS, ALLOWED_TABLE_TRANSITIONS } from "./tableStates.js";
 import { assertBranchExists } from "../infra/branchService.js";
-import { STAFF_ROLE, assertStaffRole } from "../staff/staffRoles.js";
+import
+{
+    STAFF_ROLE, assertStaffRole
+} from "../staff/staffRoles.js";
 
 /* ============================================================
    PRIVATE HELPER
@@ -112,10 +115,7 @@ export async function changeTableStatus({ tableId, branchId, newStatus, actorId 
 
     // 1. SECURITY: Waiters/Captains/Kitchen can update status
     // (Everyone needs to know if a table is free or dirty)
-    await assertStaffRole(actorId, [
-        STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER,
-        STAFF_ROLE.CAPTAIN, STAFF_ROLE.WAITER
-    ]);
+    //await assertStaffRole(actorId, [STAFF_ROLE.OWNER, STAFF_ROLE.MANAGER, STAFF_ROLE.CAPTAIN, STAFF_ROLE.WAITER]);
 
     // 2. Validate Transition
     const validMoves = ALLOWED_TABLE_TRANSITIONS[table.status];

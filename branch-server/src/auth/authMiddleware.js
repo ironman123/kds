@@ -22,6 +22,7 @@ export function requireAuth(req, res, next)
         // 3. Verify the Token
         // This checks if the token was tampered with or expired
         const decoded = jwt.verify(token, JWT_SECRET);
+        console.log(decoded)
 
         // 4. Attach User Info to Request
         // This REPLACES the old "x-actor-id" middleware logic
@@ -29,7 +30,8 @@ export function requireAuth(req, res, next)
             actorId: decoded.userId,    // This allows controllers to know WHO is acting
             role: decoded.role,         // This allows controllers to check permissions
             branchId: decoded.branchId, // This locks operations to the specific store
-            username: decoded.username
+            username: decoded.username,
+            roleId: decoded.roleId
         };
 
         // 5. Proceed to the Controller

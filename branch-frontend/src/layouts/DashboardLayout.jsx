@@ -9,7 +9,8 @@ import
     LogOut,
     Menu,
     List,
-    Layers
+    Layers,
+    Shield
 } from 'lucide-react';
 import useUserStore from '../store/userStore';
 import clsx from 'clsx';
@@ -38,6 +39,12 @@ export default function DashboardLayout()
             icon: <UtensilsCrossed size={20} />,
             path: '/dashboard',
             roles: ['OWNER', 'MANAGER', 'CAPTAIN', 'WAITER']
+        },
+        {
+            label: 'Roles',
+            icon: <Shield size={20} />,
+            path: '/dashboard/role',
+            roles: ['OWNER']
         },
         {
             label: 'Kitchen (KDS)',

@@ -1,39 +1,22 @@
 import express from "express";
 import
-{
-    createTable,
-    listTables,
-    getTable,
-    changeTableStatus, // Use the generic one for cleaner code
-    renameTable,
-    deleteTable
-} from "../tables/tableService.js";
+    {
+        createTable,
+        listTables,
+        getTable,
+        changeTableStatus,
+        renameTable,
+        deleteTable
+    } from "../tables/tableService.js";
 import { assertRequired } from "../utils/validators.js";
-import { TABLE_STATUS } from "../tables/tableStates.js";
+import { requireAuth } from "../auth/authMiddleware.js";
+import { requirePermission } from "../auth/authorizationService.js";
+import { PERMISSIONS } from "../auth/permissions.js";
 
 const router = express.Router();
 
-/* ============================================================
-   MIDDLEWARE: Context Extractor
-============================================================ */
-router.use((req, res, next) =>
-{
-    const branchId = req.headers['x-branch-id'] || req.query.branchId;
-    const actorId = req.headers['x-actor-id'] || req.body.actorId || req.query.actorId;
-
-    if (!branchId)
-    {
-        return res.status(400).json({ error: "Missing Context: 'x-branch-id' header is required." });
-    }
-    if (!actorId)
-    {
-        return res.status(400).json({ error: "Missing Context: 'x-actor-id' header is required." });
-    }
-
-    // Attach to request
-    req.context = { branchId, actorId };
-    next();
-});
+// 1. Authenticate & Populate Context (user, role, roleId, branchId)
+router.use(requireAuth);
 
 /* ============================================================
    READ ROUTES
@@ -41,14 +24,30 @@ router.use((req, res, next) =>
 
 /**
  * GET /api/tables
- * List all tables for a branch
+ * List all tables.
+ * Permission: TABLE_VIEW
  */
-router.get("/", async (req, res) =>
+router.get("/", requirePermission(PERMISSIONS.TABLE_VIEW), async (req, res) =>
 {
     try
     {
-        const { branchId } = req.context;
-        const tables = await listTables(branchId);
+        const { branchId, role } = req.context;
+
+        // Owner sees all (or specific if filtered), Manager locked to branch
+        // For listTables, the service usually requires a branchId.
+        // If Owner calls without specific query, we might want to return 400 or list all?
+        // Usually, the frontend for tables works per-branch.
+
+        const targetBranchId = role === 'OWNER' ? (req.query.branchId || branchId) : branchId;
+
+        if (!targetBranchId && role === 'OWNER')
+        {
+            // Optional: If Owner doesn't specify branch, maybe return empty or error?
+            // For now, let's assume they pick a branch in the UI dropdown.
+            return res.status(400).json({ error: "Owner must specify ?branchId=..." });
+        }
+
+        const tables = await listTables(targetBranchId);
         res.json(tables);
     } catch (e)
     {
@@ -58,14 +57,17 @@ router.get("/", async (req, res) =>
 
 /**
  * GET /api/tables/:id
- * Get single table details
+ * Get single table details.
+ * Permission: TABLE_VIEW
  */
-router.get("/:id", async (req, res) =>
+router.get("/:id", requirePermission(PERMISSIONS.TABLE_VIEW), async (req, res) =>
 {
     try
     {
-        const { branchId } = req.context;
-        const table = await getTable(req.params.id, branchId);
+        const { branchId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
+
+        const table = await getTable(req.params.id, enforcementBranchId);
         res.json(table);
     } catch (e)
     {
@@ -79,32 +81,34 @@ router.get("/:id", async (req, res) =>
 
 /**
  * POST /api/tables
- * Create a new table
- * [Requires: OWNER or MANAGER]
+ * Create a new table.
+ * Permission: TABLE_MANAGE
  */
-router.post("/", async (req, res) =>
+router.post("/", requirePermission(PERMISSIONS.TABLE_MANAGE), async (req, res) =>
 {
     try
     {
-        const { branchId, actorId } = req.context;
+        const { actorId, role, branchId } = req.context;
 
         // 1. Validate Input
         assertRequired(req.body, ['label']);
 
-        // 2. Call Service
+        // 2. Determine Branch
+        // Owner can set branchId in body. Manager uses token branchId.
+        const targetBranchId = role === 'OWNER' ? req.body.branchId : branchId;
+
+        // 3. Call Service
         const table = await createTable({
             label: req.body.label,
-            branchId,
-            actorId // Service will check if actor is Manager/Owner
+            branchId: targetBranchId,
+            actorId
         });
 
         res.status(201).json(table);
 
     } catch (e)
     {
-        // Handle specific "Access Denied" errors with 403
-        const status = e.message.includes("Access Denied") ? 403 : 400;
-        res.status(status).json({ error: e.message });
+        res.status(400).json({ error: e.message });
     }
 });
 
@@ -114,22 +118,24 @@ router.post("/", async (req, res) =>
 
 /**
  * PATCH /api/tables/:id/status
- * Update table status (Occupied/Free/Reserved)
- * [Allowed: WAITER, CAPTAIN, MANAGER, OWNER]
+ * Update table status (Occupied/Free/Reserved).
+ * Permission: TABLE_UPDATE_STATUS
  */
-router.patch("/:id/status", async (req, res) =>
+router.patch("/:id/status", requirePermission(PERMISSIONS.TABLE_UPDATE_STATUS), async (req, res) =>
 {
     try
     {
-        const { branchId, actorId } = req.context;
+        const { branchId, actorId, role } = req.context;
 
         // 1. Validate Input
         assertRequired(req.body, ['status']);
 
-        // 2. Call Service (Generic function handles all status types)
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
+
+        // 2. Call Service
         const result = await changeTableStatus({
             tableId: req.params.id,
-            branchId,
+            branchId: enforcementBranchId,
             actorId,
             newStatus: req.body.status
         });
@@ -144,22 +150,22 @@ router.patch("/:id/status", async (req, res) =>
 
 /**
  * PATCH /api/tables/:id
- * Rename a table
- * [Requires: OWNER or MANAGER]
+ * Rename a table.
+ * Permission: TABLE_MANAGE
  */
-router.patch("/:id", async (req, res) =>
+router.patch("/:id", requirePermission(PERMISSIONS.TABLE_MANAGE), async (req, res) =>
 {
     try
     {
-        const { branchId, actorId } = req.context;
+        const { branchId, actorId, role } = req.context;
 
-        // 1. Validate Input
         assertRequired(req.body, ['label']);
 
-        // 2. Call Service
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
+
         const result = await renameTable(
             req.params.id,
-            branchId,
+            enforcementBranchId,
             req.body.label,
             actorId
         );
@@ -168,8 +174,7 @@ router.patch("/:id", async (req, res) =>
 
     } catch (e)
     {
-        const status = e.message.includes("Access Denied") ? 403 : 400;
-        res.status(status).json({ error: e.message });
+        res.status(400).json({ error: e.message });
     }
 });
 
@@ -179,23 +184,23 @@ router.patch("/:id", async (req, res) =>
 
 /**
  * DELETE /api/tables/:id
- * Remove a table completely
- * [Requires: OWNER or MANAGER]
+ * Remove a table completely.
+ * Permission: TABLE_MANAGE
  */
-router.delete("/:id", async (req, res) =>
+router.delete("/:id", requirePermission(PERMISSIONS.TABLE_MANAGE), async (req, res) =>
 {
     try
     {
-        const { branchId, actorId } = req.context;
+        const { branchId, actorId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
 
-        await deleteTable(req.params.id, branchId, actorId);
+        await deleteTable(req.params.id, enforcementBranchId, actorId);
 
         res.status(204).send();
 
     } catch (e)
     {
-        const status = e.message.includes("Access Denied") ? 403 : 400;
-        res.status(status).json({ error: e.message });
+        res.status(400).json({ error: e.message });
     }
 });
 

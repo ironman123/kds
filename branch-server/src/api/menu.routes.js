@@ -1,367 +1,288 @@
 import express from "express";
 import
-{
-    createCategory,
-    listCategories,
-    listPublicCategories,
-    updateCategoryDetails,
-    changeCategoryAvailability,
-    deleteCategory,
-    createCategoryForBranches,
-    updateCategoryForBranches,
-    deleteCategoryForBranches
-} from "../menu/menuCategoryService.js";
+    {
+        createCategory,
+        listCategories,
+        listPublicCategories,
+        updateCategoryDetails,
+        changeCategoryAvailability,
+        deleteCategory,
+        createCategoryForBranches,
+        updateCategoryForBranches,
+        deleteCategoryForBranches
+    } from "../menu/menuCategoryService.js";
 import
-{
-    createMenuItem,
-    listMenuItems,
-    listPublicMenuItems,
-    updateMenuItemDetails,
-    deleteMenuItem,
-    createMenuItemForBranches,
-    updateMenuItemForBranches,
-    deleteMenuItemForBranches,
-    moveMenuItemForBranches
-} from "../menu/menuItemService.js";
+    {
+        createMenuItem,
+        listMenuItems,
+        listPublicMenuItems,
+        updateMenuItemDetails,
+        deleteMenuItem,
+        createMenuItemForBranches,
+        updateMenuItemForBranches,
+        deleteMenuItemForBranches,
+        moveMenuItemForBranches
+    } from "../menu/menuItemService.js";
 import
-{
-    getRecipeDetails,
-    editRecipe,
-    updateRecipeForBranches
-} from "../menu/recipeService.js";
+    {
+        getRecipeDetails,
+        editRecipe,
+        updateRecipeForBranches
+    } from "../menu/recipeService.js";
 import { assertRequired } from "../utils/validators.js";
-import { requireAuth } from "../auth/authMiddleware.js"; // Your Auth Middleware
+import { requireAuth } from "../auth/authMiddleware.js";
+import { requirePermission } from '../auth/authorizationService.js';
+import { PERMISSIONS } from '../auth/permissions.js';
 
 const router = express.Router();
 
-// Apply Auth globally to all menu routes
 router.use(requireAuth);
 
 /* ============================================================
    SECTION 1: CATEGORIES
 ============================================================ */
-// --- Batch Operations (Owner Only) ---
-router.post("/categories/batch", async (req, res) =>
+
+// --- BATCH (Explicit Routes for Frontend Compatibility) ---
+router.post("/categories/batch", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const { actorId, role } = req.context;
-        assertRequired(req.body, ['name', 'targetBranchIds']);
-
-        // Service will throw error if actorId is not OWNER
-        const result = await createCategoryForBranches({
-            ...req.body,
-            actorId: actorId
-        });
+        const { actorId } = req.context;
+        const result = await createCategoryForBranches({ ...req.body, actorId });
         res.status(201).json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.patch("/categories/batch", async (req, res) =>
+router.patch("/categories/batch", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
-    const { actorId } = req.context;
     try
     {
-        const result = await updateCategoryForBranches({
-            ...req.body,
-            actorId: actorId
-        });
+        const { actorId } = req.context;
+        const result = await updateCategoryForBranches({ ...req.body, actorId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.delete("/categories/batch", async (req, res) =>
+router.delete("/categories/batch", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
-    const { actorId } = req.context;
     try
     {
-        const result = await deleteCategoryForBranches({
-            ...req.body,
-            actorId: actorId
-        });
+        const { actorId } = req.context;
+        const result = await deleteCategoryForBranches({ ...req.body, actorId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// --- Public / POS View (Available Only) ---
-router.get("/categories/public", async (req, res) =>
-{
-    try
-    {
-        // branchId comes from header (via Middleware context)
-        const result = await listPublicCategories({ branchId: req.context.branchId });
-        res.json(result);
-    } catch (e) { res.status(400).json({ error: e.message }); }
-});
-
-// --- Admin View (All Categories including hidden) ---
-router.get("/categories", async (req, res) =>
+// --- SINGLE & READ ---
+router.get("/categories", requirePermission(PERMISSIONS.MENU_VIEW), async (req, res) =>
 {
     try
     {
         const { branchId, role } = req.context;
-
-        // 🧠 THE FIX: 
-        // If Owner, pass NULL to fetch all categories from all branches.
-        // If Manager, pass their specific branchId.
         const targetBranchId = role === 'OWNER' ? null : branchId;
-
-
         const result = await listCategories({ branchId: targetBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// --- Single Operations (Manager/Owner) ---
-router.post("/categories", async (req, res) =>
+router.get("/categories/public", async (req, res) =>
 {
     try
     {
-        const result = await createCategory({
-            ...req.body,
-            actorId: req.context.actorId,
-            branchId: req.context.branchId
-        });
+        const result = await listPublicCategories({ branchId: req.context.branchId });
+        res.json(result);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post("/categories", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
+{
+    try
+    {
+        const { actorId, branchId, role } = req.context;
+        // Owner passes branchId in body, Manager uses context
+        const enforcementBranchId = role === 'OWNER' ? req.body.branchId : branchId;
+
+        const result = await createCategory({ ...req.body, actorId, branchId: enforcementBranchId });
         res.status(201).json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.patch("/categories/:id", async (req, res) =>
+router.patch("/categories/:id", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const { actorId, role, branchId } = req.context;
-
-        // 🧠 MODULAR FIX:
-        // If Owner: Pass NULL (ignore branch check, find category by ID globally)
-        // If Manager: Pass 'branchId' (ensure category belongs to their branch)
+        const { actorId, branchId, role } = req.context;
         const enforcementBranchId = role === 'OWNER' ? null : branchId;
-        const result = await updateCategoryDetails({
-            categoryId: req.params.id,
-            ...req.body,
-            actorId: actorId,
-            branchId: enforcementBranchId
-        });
+
+        const result = await updateCategoryDetails({ categoryId: req.params.id, ...req.body, actorId, branchId: enforcementBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.patch("/categories/:id/availability", async (req, res) =>
+router.patch("/categories/:id/availability", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const { actorId, role, branchId } = req.context;
-
-        // 🧠 MODULAR FIX
+        const { actorId, branchId, role } = req.context;
         const enforcementBranchId = role === 'OWNER' ? null : branchId;
 
-        const result = await changeCategoryAvailability({
-            categoryId: req.params.id,
-            available: req.body.available,
-            actorId,
-            branchId: enforcementBranchId
-        });
+        const result = await changeCategoryAvailability({ categoryId: req.params.id, available: req.body.available, actorId, branchId: enforcementBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.delete("/categories/:id", async (req, res) =>
+router.delete("/categories/:id", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const { actorId, role, branchId } = req.context;
-
-        // 🧠 MODULAR FIX
+        const { actorId, branchId, role } = req.context;
         const enforcementBranchId = role === 'OWNER' ? null : branchId;
 
-        await deleteCategory({
-            categoryId: req.params.id,
-            actorId,
-            branchId: enforcementBranchId
-        });
+        await deleteCategory({ categoryId: req.params.id, actorId, branchId: enforcementBranchId });
         res.sendStatus(204);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
-
-
 
 
 /* ============================================================
    SECTION 2: MENU ITEMS
 ============================================================ */
-// --- Batch Operations (Owner Only) ---
-router.post("/items/batch", async (req, res) =>
+
+// --- BATCH (Explicit Routes) ---
+router.post("/items/batch", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const result = await createMenuItemForBranches({
-            ...req.body,
-            actorId: req.context.actorId
-        });
+        const { actorId } = req.context;
+        const result = await createMenuItemForBranches({ ...req.body, actorId });
         res.status(201).json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.patch("/items/batch", async (req, res) =>
+router.patch("/items/batch", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const result = await updateMenuItemForBranches({
-            ...req.body,
-            actorId: req.context.actorId
-        });
+        const { actorId } = req.context;
+        const result = await updateMenuItemForBranches({ ...req.body, actorId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Smart Move (Batch Move Categories)
-router.post("/items/batch/move", async (req, res) =>
+router.post("/items/batch/move", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const result = await moveMenuItemForBranches({
-            ...req.body,
-            actorId: req.context.actorId
-        });
+        const { actorId } = req.context;
+        const result = await moveMenuItemForBranches({ ...req.body, actorId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.delete("/items/batch", async (req, res) =>
+router.delete("/items/batch", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const result = await deleteMenuItemForBranches({
-            ...req.body,
-            actorId: req.context.actorId
-        });
+        const { actorId } = req.context;
+        const result = await deleteMenuItemForBranches({ ...req.body, actorId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-
-// --- Public / POS View ---
+// --- PUBLIC ---
 router.get("/items/public", async (req, res) =>
 {
-    const { branchId, role } = req.context;
-    const enforcementBranchId = role === 'OWNER' ? null : branchId;
     try
     {
-        const result = await listPublicMenuItems({ branchId: enforcementBranchId });
+        const result = await listPublicMenuItems({ branchId: req.context.branchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// --- Admin View ---
-router.get("/items", async (req, res) =>
+// --- ADMIN SINGLE ---
+router.get("/items", requirePermission(PERMISSIONS.MENU_VIEW), async (req, res) =>
 {
-    const { branchId, role } = req.context;
-    const enforcementBranchId = role === 'OWNER' ? null : branchId;
     try
     {
+        const { branchId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
         const result = await listMenuItems({ branchId: enforcementBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// --- Single Operations (Manager/Owner) ---
-router.post("/items", async (req, res) =>
+router.post("/items", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const { branchId, role } = req.context;
-        const enforcementBranchId = role === 'OWNER' ? null : branchId;
-        const result = await createMenuItem({
-            ...req.body,
-            actorId: req.context.actorId,
-            branchId: enforcementBranchId
-        });
+        const { actorId, branchId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? req.body.branchId : branchId; // Handle Owner creating for specific branch
+
+        const result = await createMenuItem({ ...req.body, actorId, branchId: enforcementBranchId });
         res.status(201).json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.patch("/items/:id", async (req, res) =>
+router.patch("/items/:id", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const { branchId, role } = req.context;
+        const { actorId, branchId, role } = req.context;
         const enforcementBranchId = role === 'OWNER' ? null : branchId;
-        const result = await updateMenuItemDetails({
-            itemId: req.params.id,
-            updates: req.body,
-            actorId: req.context.actorId,
-            branchId: enforcementBranchId
-        });
+
+        const result = await updateMenuItemDetails({ itemId: req.params.id, updates: req.body, actorId, branchId: enforcementBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.delete("/items/:id", async (req, res) =>
+router.delete("/items/:id", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        await deleteMenuItem({
-            itemId: req.params.id,
-            actorId: req.context.actorId,
-            branchId: req.context.branchId
-        });
+        const { actorId, branchId, role } = req.context;
+        const enforcementBranchId = role === 'OWNER' ? null : branchId;
+
+        await deleteMenuItem({ itemId: req.params.id, actorId, branchId: enforcementBranchId });
         res.sendStatus(204);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
-
-
 
 /* ============================================================
    SECTION 3: RECIPES
 ============================================================ */
 
-// --- Batch Operation (Owner Only) ---
-// Used to standardize recipes across branches
-router.put("/items/recipe/batch", async (req, res) =>
+router.put("/items/recipe/batch", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const result = await updateRecipeForBranches({
-            ...req.body,
-            actorId: req.context.actorId
-        });
+        const { actorId } = req.context;
+        const result = await updateRecipeForBranches({ ...req.body, actorId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// --- Get Recipe Details ---
-router.get("/items/:itemId/recipe", async (req, res) =>
+router.get("/items/:itemId/recipe", requirePermission(PERMISSIONS.MENU_VIEW), async (req, res) =>
 {
     try
     {
         const { branchId, role } = req.context;
         const enforcementBranchId = role === 'OWNER' ? null : branchId;
-        const result = await getRecipeDetails({
-            menuItemId: req.params.itemId,
-            branchId: enforcementBranchId
-        });
+
+        const result = await getRecipeDetails({ menuItemId: req.params.itemId, branchId: enforcementBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// --- Single Operation (Edit Recipe) ---
-router.put("/items/:itemId/recipe", async (req, res) =>
+router.put("/items/:itemId/recipe", requirePermission(PERMISSIONS.MENU_MANAGE), async (req, res) =>
 {
     try
     {
-        const { branchId, role } = req.context;
+        const { actorId, branchId, role } = req.context;
         const enforcementBranchId = role === 'OWNER' ? null : branchId;
-        // Handles Instructions + Ingredients (Add/Remove/Update/Replace)
-        const result = await editRecipe({
-            menuItemId: req.params.itemId,
-            ...req.body,
-            actorId: req.context.actorId,
-            branchId: enforcementBranchId
-        });
+
+        const result = await editRecipe({ menuItemId: req.params.itemId, ...req.body, actorId, branchId: enforcementBranchId });
         res.json(result);
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
-
-
 
 export default router;

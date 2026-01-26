@@ -201,6 +201,7 @@ function mapRowToStaff(row)
         branchId: row.branch_id,
         name: row.name,
         role: row.role,
+        roleId: row.role_id,
         phone: row.phone,
         username: row.username,
         adhaarNumber: row.adhaar_number,

@@ -1,29 +1,34 @@
 import express from "express";
 import
-{
-    createOrder,
-    getOrderById,
-    getActiveOrders,
-    getOrdersForTable,
-    changeOrderStatus,
-    transferTable
-} from "../orders/orderService.js";
+    {
+        createOrder,
+        getOrderById,
+        getActiveOrders,
+        getOrdersForTable,
+        changeOrderStatus,
+        transferTable
+    } from "../orders/orderService.js";
 import
-{
-    addItemToOrder,
-    changeOrderItemStatus
-} from "../orders/orderItemService.js";
+    {
+        addItemToOrder,
+        changeOrderItemStatus
+    } from "../orders/orderItemService.js";
+import { requireAuth } from "../auth/authMiddleware.js";
+import { requirePermission } from "../auth/authorizationService.js";
+import { PERMISSIONS } from "../auth/permissions.js";
 
 const router = express.Router();
+
+// 1. Authenticate everyone
+router.use(requireAuth);
 
 // ------------------------------------------------------------------
 // 🛒 ORDER MANAGEMENT (Waiter / POS)
 // ------------------------------------------------------------------
 
 // 1. Create a New Order
-// POST /api/orders
-// Body: { tableId, waiterId, servePolicy, customerName, customerPhone }
-router.post("/", async (req, res) =>
+// Permission: ORDER_CREATE (Waiters, Captains, Managers)
+router.post("/", requirePermission(PERMISSIONS.ORDER_CREATE), async (req, res) =>
 {
     try
     {
@@ -40,8 +45,8 @@ router.post("/", async (req, res) =>
 });
 
 // 2. Get All Active Orders (Kitchen Display / POS Dashboard)
-// GET /api/orders/active
-router.get("/active", async (req, res) =>
+// Permission: ORDER_VIEW
+router.get("/active", requirePermission(PERMISSIONS.ORDER_VIEW), async (req, res) =>
 {
     try
     {
@@ -54,8 +59,8 @@ router.get("/active", async (req, res) =>
 });
 
 // 3. Get Specific Order Details
-// GET /api/orders/:id
-router.get("/:id", async (req, res) =>
+// Permission: ORDER_VIEW
+router.get("/:id", requirePermission(PERMISSIONS.ORDER_VIEW), async (req, res) =>
 {
     try
     {
@@ -69,8 +74,8 @@ router.get("/:id", async (req, res) =>
 });
 
 // 4. Get Orders for a Table (Table View)
-// GET /api/orders/table/:tableId
-router.get("/table/:tableId", async (req, res) =>
+// Permission: ORDER_VIEW
+router.get("/table/:tableId", requirePermission(PERMISSIONS.ORDER_VIEW), async (req, res) =>
 {
     try
     {
@@ -83,9 +88,9 @@ router.get("/table/:tableId", async (req, res) =>
 });
 
 // 5. Change Order Status (e.g., PLACED -> CANCELLED, READY -> SERVED)
-// PATCH /api/orders/:id/status
-// Body: { newStatus: "CANCELLED" }
-router.patch("/:id/status", async (req, res) =>
+// Permission: ORDER_UPDATE (Waiters can serve, Managers can cancel)
+// Ideally, Voiding/Cancelling might need specific perms, but for now generic UPDATE covers it.
+router.patch("/:id/status", requirePermission(PERMISSIONS.ORDER_UPDATE), async (req, res) =>
 {
     try
     {
@@ -103,9 +108,8 @@ router.patch("/:id/status", async (req, res) =>
 });
 
 // 6. Transfer Table (Change Waiter)
-// PATCH /api/orders/:id/transfer
-// Body: { newWaiterId: "uuid" }
-router.patch("/:id/transfer", async (req, res) =>
+// Permission: ORDER_UPDATE (or stricter if you prefer)
+router.patch("/:id/transfer", requirePermission(PERMISSIONS.ORDER_UPDATE), async (req, res) =>
 {
     try
     {
@@ -127,15 +131,14 @@ router.patch("/:id/transfer", async (req, res) =>
 // ------------------------------------------------------------------
 
 // 7. Add Item to Order
-// POST /api/orders/:id/items
-// Body: { menuItemId, quantity, notes }
-router.post("/:id/items", async (req, res) =>
+// Permission: ORDER_CREATE (Adding items is like creating a sub-order)
+router.post("/:id/items", requirePermission(PERMISSIONS.ORDER_CREATE), async (req, res) =>
 {
     try
     {
         const result = await addItemToOrder({
             orderId: req.params.id,
-            ...req.body,
+            ...req.body, // { menuItemId, quantity, notes }
             branchId: req.context.branchId,
             actorId: req.context.actorId
         });
@@ -147,10 +150,8 @@ router.post("/:id/items", async (req, res) =>
 });
 
 // 8. Update Item Status (Kitchen Display System - KDS)
-// PATCH /api/orders/items/:itemId/status
-// Body: { newStatus: "PREPARING" }
-// NOTE: This route is specific to an ITEM, not the whole order
-router.patch("/items/:itemId/status", async (req, res) =>
+// Permission: ORDER_UPDATE (Chefs need this to mark items as COOKING/READY)
+router.patch("/items/:itemId/status", requirePermission(PERMISSIONS.ORDER_UPDATE), async (req, res) =>
 {
     try
     {

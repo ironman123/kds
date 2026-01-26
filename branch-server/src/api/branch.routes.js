@@ -5,30 +5,29 @@ import
         getBranch,
         listBranches,
         updateBranch
-    } from "../infra/branchService.js"; // Ensure these are async in your service now!
+    } from "../infra/branchService.js";
 import { assertRequired } from "../utils/validators.js";
+import { requireAuth } from "../auth/authMiddleware.js";
+import { requirePermission } from "../auth/authorizationService.js";
+import { PERMISSIONS } from "../auth/permissions.js";
 
 const router = express.Router();
 
-/* ============================================================
-   HELPER: Actor Extractor
-   Branches don't need a "Branch Context" (since they ARE the context),
-   but we still need to know WHO is acting (the Admin/Owner).
-============================================================ */
-const getActor = (req) =>
-{
-    return req.headers['x-actor-id'] || req.body.actorId || req.query.actorId;
-};
+// 1. Authenticate everyone
+router.use(requireAuth);
 
 /* ============================================================
-   READ ROUTES
+   READ ROUTES (Protected)
 ============================================================ */
 
 /**
  * GET /api/branches
- * List all branches (Admin Dashboard)
+ * List all branches.
+ * Permission: BRANCH_VIEW
+ * Note: Ensure all roles (Manager, Waiter, etc.) have this permission 
+ * in the database if they need to see branches to switch context.
  */
-router.get("/", async (req, res) =>
+router.get("/", requirePermission(PERMISSIONS.BRANCH_VIEW), async (req, res) =>
 {
     try
     {
@@ -42,9 +41,10 @@ router.get("/", async (req, res) =>
 
 /**
  * GET /api/branches/:id
- * Get details of a specific branch
+ * Get details of a specific branch.
+ * Permission: BRANCH_VIEW
  */
-router.get("/:id", async (req, res) =>
+router.get("/:id", requirePermission(PERMISSIONS.BRANCH_VIEW), async (req, res) =>
 {
     try
     {
@@ -61,18 +61,19 @@ router.get("/:id", async (req, res) =>
 });
 
 /* ============================================================
-   CREATE & UPDATE
+   CREATE & UPDATE (Protected)
 ============================================================ */
 
 /**
  * POST /api/branches
- * Create a new branch (System Admin / Owner only)
+ * Create a new branch.
+ * Permission: BRANCH_MANAGE
  */
-router.post("/", async (req, res) =>
+router.post("/", requirePermission(PERMISSIONS.BRANCH_MANAGE), async (req, res) =>
 {
     try
     {
-        const actorId = getActor(req);
+        const { actorId } = req.context;
 
         // 1. Validate Input
         assertRequired(req.body, ['name', 'address']);
@@ -81,7 +82,7 @@ router.post("/", async (req, res) =>
         const branch = await createBranch({
             name: req.body.name,
             address: req.body.address,
-            actorId // Pass actor for audit logs
+            actorId
         });
 
         res.status(201).json(branch);
@@ -94,16 +95,14 @@ router.post("/", async (req, res) =>
 
 /**
  * PATCH /api/branches/:id
- * Update branch details
+ * Update branch details.
+ * Permission: BRANCH_MANAGE
  */
-router.patch("/:id", async (req, res) =>
+router.patch("/:id", requirePermission(PERMISSIONS.BRANCH_MANAGE), async (req, res) =>
 {
     try
     {
-        const actorId = getActor(req);
-
-        // We allow partial updates, so we don't assertRequired on everything.
-        // But we must check if the service expects specific fields.
+        const { actorId } = req.context;
 
         await updateBranch({
             branchId: req.params.id,

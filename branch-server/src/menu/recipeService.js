@@ -20,7 +20,10 @@ import
     deleteAllIngredientsForRecipe
 } from "./recipeIngredientRepository.js";
 import { logMenuEvent } from "../menu/menuEventRepository.js"; // Adjusted path
-import { STAFF_ROLE, assertStaffRole } from "../staff/staffRoles.js";
+import
+{
+    STAFF_ROLE, assertStaffRole
+} from "../staff/staffRoles.js";
 import { assertBranchExists } from "../infra/branchService.js";
 import { assertItemExists } from "../menu/menuItemService.js";
 import { runInTransaction } from "../infra/transactionManager.js";
@@ -71,7 +74,7 @@ export async function getRecipeDetails({ menuItemId, branchId })
 
 export async function updateRecipeInstructions({ menuItemId, instructions, actorId, branchId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     if (typeof instructions !== 'string') throw new Error("Instructions must be a string");
 
@@ -100,7 +103,7 @@ export async function updateRecipeInstructions({ menuItemId, instructions, actor
 
 export async function addIngredient({ menuItemId, ingredient, quantity, actorId, branchId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     const recipe = await getRecipeOrThrow(menuItemId, branchId);
 
@@ -128,7 +131,7 @@ export async function addIngredient({ menuItemId, ingredient, quantity, actorId,
 
 export async function changeIngredientQuantity({ menuItemId, ingredientId, newQuantity, actorId, branchId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     const recipe = await getRecipeOrThrow(menuItemId, branchId); // Auth check
 
@@ -155,7 +158,7 @@ export async function changeIngredientQuantity({ menuItemId, ingredientId, newQu
 
 export async function removeIngredient({ menuItemId, ingredientId, actorId, branchId })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     const recipe = await getRecipeOrThrow(menuItemId, branchId);
 
@@ -196,7 +199,7 @@ export async function editRecipe({
     replaceAllIngredients = null // 👈 NEW: Accept this parameter
 })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     const recipe = await getRecipeOrThrow(menuItemId, branchId);
 
@@ -285,7 +288,7 @@ export async function updateRecipeForBranches({
     actorId
 })
 {
-    await assertStaffRole(actorId, [STAFF_ROLE.OWNER]);
+    //await assertStaff(actorId, [STAFF_ROLE.OWNER]);
 
     if (!targetBranchIds || targetBranchIds.length === 0) throw new Error("Target branch IDs required");
     if (!itemName) throw new Error("Item name required");

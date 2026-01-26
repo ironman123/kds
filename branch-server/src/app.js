@@ -15,6 +15,7 @@ import orderRoutes from "./api/orders.routes.js"
 import branchRoutes from "./api/branch.routes.js";
 import tablesRoutes from "./api/tables.routes.js";
 import staffRoutes from "./api/staff.routes.js";  // ✅ New Staff
+import rolesRoutes from "./api/roles.routes.js"
 
 // 3. Middleware Imports
 import { requireAuth } from "./auth/authMiddleware.js";
@@ -43,6 +44,7 @@ app.use("/api/orders", requireAuth, orderRoutes);
 app.use("/api/staff", requireAuth, staffRoutes);
 app.use("/api/tables", requireAuth, tablesRoutes);
 app.use("/api/branches", requireAuth, branchRoutes);
+app.use('/api/roles', requireAuth, rolesRoutes);
 
 // --- ERROR HANDLING ---
 app.use((err, req, res, next) =>

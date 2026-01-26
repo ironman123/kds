@@ -2,18 +2,21 @@ import crypto from "crypto";
 import { ORDER_STATUS } from "./orderStates.js";
 import { ALLOWED_TRANSITIONS } from "./orderTransitions.js";
 import
-    {
-        insertOrder,
-        getOrderByIdRepo,
-        getOrdersForTableRepo,
-        updateOrderStatus,
-        getActiveOrdersRepo,
-        updateOrderWaiter,
-        deleteOrderRepo
-    } from "./orderRepository.js";
+{
+    insertOrder,
+    getOrderByIdRepo,
+    getOrdersForTableRepo,
+    updateOrderStatus,
+    getActiveOrdersRepo,
+    updateOrderWaiter,
+    deleteOrderRepo
+} from "./orderRepository.js";
 import { logOrderEvent } from "./orderEventRepository.js";
 import { assertBranchExists } from "../infra/branchService.js";
-import { STAFF_ROLE, assertStaffRole } from "../staff/staffRoles.js";
+import
+{
+    STAFF_ROLE, assertStaffRole
+} from "../staff/staffRoles.js";
 import { countItemsForOrder } from "./orderItemRepository.js";
 import { markTableOccupied, markTableFree, assertTableFree } from '../tables/tableService.js';
 
@@ -43,10 +46,7 @@ export async function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", 
     await assertBranchExists(branchId);
 
     // 1. Security: Only Waiters, Captains, Managers, Owners can create orders
-    await assertStaffRole(actorId, [
-        STAFF_ROLE.WAITER, STAFF_ROLE.CAPTAIN,
-        STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER
-    ]);
+    //await assertStaffRole(actorId, [STAFF_ROLE.WAITER, STAFF_ROLE.CAPTAIN, STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     // 2. Logic: Ensure Table is actually free
     await assertTableFree(tableId, branchId);
