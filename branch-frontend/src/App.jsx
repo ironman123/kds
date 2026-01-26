@@ -8,9 +8,13 @@ import StaffManagement from './features/staff/StaffManagement';
 import CategoryManagement from './features/menu/categoryManagement';
 import MenuItemManagement from './features/menu/menuItemManagement';
 import RoleManagement from './features/role/RoleManagement';
+import TableManagement from './features/tables/TableManagement';
+
+import TableSelection from './features/orders/TableSelection';
+import CreateOrder from './features/orders/CreateOrder';
+import OrderInterface from './features/orders/OrderInterface';
 
 // Placeholder Pages (We will replace 'OrderInterface' next)
-const OrderInterface = () => <h2>🍔 Taking Orders (POS)</h2>;
 const KitchenDisplay = () => <h2>👨‍🍳 Kitchen View (KDS)</h2>;
 const Settings = () => <h2>⚙️ Settings</h2>;
 
@@ -41,6 +45,16 @@ export default function App()
           {/* Default view: Taking Orders */}
           <Route index element={<OrderInterface />} />
           <Route path="role" element={<RoleManagement />} />
+          <Route path="tables" element={<TableManagement />} />
+
+          // 1. Table Selection (Default for /orders)
+          <Route path="orders" element={<TableSelection />} />
+
+// 2. Create Order (After clicking a table)
+          <Route path="orders/new/:tableId" element={<CreateOrder />} />
+
+// 3. Active Order (The POS Interface)
+          <Route path="orders/:orderId" element={<OrderInterface />} />
 
           <Route path="kds" element={<KitchenDisplay />} />
           <Route path="category" element={<CategoryManagement />} />

@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import
 {
     LayoutDashboard,
+    LayoutGrid,
     UtensilsCrossed,
     ChefHat,
     Users,
@@ -45,6 +46,12 @@ export default function DashboardLayout()
             icon: <Shield size={20} />,
             path: '/dashboard/role',
             roles: ['OWNER']
+        },
+        {
+            label: 'Tables',
+            icon: <LayoutGrid size={20} />, // Import LayoutGrid from lucide-react
+            path: '/dashboard/tables',
+            roles: ['MANAGER', 'CAPTAIN', 'WAITER']
         },
         {
             label: 'Kitchen (KDS)',
