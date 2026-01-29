@@ -3,9 +3,9 @@ import { getItemsForOrder } from "./orderItemRepository.js";
 import { ORDER_STATUS } from "./orderStates.js";
 import { ORDER_ITEM_STATUS } from "./orderItemStates.js";
 
-export async function deriveOrderState(orderId)
+export async function deriveOrderState(orderId, branchId)
 {
-    const order = await getOrderByIdRepo(orderId);
+    const order = await getOrderByIdRepo(orderId, branchId);
     if (!order) throw new Error("Order not found");
 
     const items = await getItemsForOrder(orderId);

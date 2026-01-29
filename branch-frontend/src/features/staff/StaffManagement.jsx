@@ -487,7 +487,7 @@ function EditStaffModal({ staff, onClose, onSuccess })
                             <label className="block text-sm font-semibold text-gray-700 mb-1">Full Name</label>
                             <input
                                 required
-                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
                                 value={formData.name}
                                 onChange={e => setFormData({ ...formData, name: e.target.value })}
                             />
@@ -497,7 +497,7 @@ function EditStaffModal({ staff, onClose, onSuccess })
                             <label className="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
                             <input
                                 required
-                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
                                 value={formData.phone}
                                 onChange={e => setFormData({ ...formData, phone: e.target.value })}
                             />
@@ -511,7 +511,7 @@ function EditStaffModal({ staff, onClose, onSuccess })
                             disabled={user.role !== 'OWNER'}
                             className={clsx("w-full p-2.5 border border-gray-300 rounded-lg outline-none", {
                                 "bg-gray-100 text-gray-500 cursor-not-allowed": user.role !== 'OWNER',
-                                "bg-white focus:ring-2 focus:ring-orange-500": user.role === 'OWNER'
+                                "bg-white focus:ring-2 focus:ring-yellow-400": user.role === 'OWNER'
                             })}
                             value={formData.role}
                             onChange={e => setFormData({ ...formData, role: e.target.value })}

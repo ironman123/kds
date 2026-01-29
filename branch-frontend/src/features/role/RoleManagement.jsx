@@ -253,7 +253,7 @@ function RoleModal({ role, permissionsMap, userRole, onClose, onSuccess })
                                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Role Name</label>
                                 <input
                                     disabled={isSystem}
-                                    className={clsx("w-full px-3 py-2 border rounded-md focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-gray-50", isSystem && "cursor-not-allowed opacity-70")}
+                                    className={clsx("w-full px-3 py-2 border rounded-md focus:ring-1 focus:ring-yellow-400 outline-none text-sm bg-gray-50", isSystem && "cursor-not-allowed opacity-70")}
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                     placeholder="e.g. Senior Waiter"
@@ -264,7 +264,7 @@ function RoleModal({ role, permissionsMap, userRole, onClose, onSuccess })
                             <div>
                                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Description</label>
                                 <textarea
-                                    className="w-full px-3 py-2 border rounded-md focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-gray-50 resize-none h-20"
+                                    className="w-full px-3 py-2 border rounded-md focus:ring-1 focus:ring-yellow-400 outline-none text-sm bg-gray-50 resize-none h-20"
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
                                     placeholder="Brief description..."
@@ -275,7 +275,7 @@ function RoleModal({ role, permissionsMap, userRole, onClose, onSuccess })
                         {/* PERMISSIONS LIST (Scrolls along with inputs) */}
                         <div>
                             <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2 text-xs uppercase tracking-wider">
-                                <Shield size={14} className="text-orange-600" /> Access Controls
+                                <Shield size={14} className="text-yellow-500" /> Access Controls
                             </h4>
 
                             <div className="space-y-3">
@@ -296,17 +296,17 @@ function RoleModal({ role, permissionsMap, userRole, onClose, onSuccess })
                                                         onClick={() => togglePermission(p.id)}
                                                         className={clsx(
                                                             "flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors",
-                                                            isChecked ? "bg-orange-50/30" : ""
+                                                            isChecked ? "bg-yellow-100/30" : ""
                                                         )}
                                                     >
                                                         <div className={clsx(
                                                             "w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors",
-                                                            isChecked ? "bg-orange-500 border-orange-500" : "bg-white border-gray-300"
+                                                            isChecked ? "bg-yellow-400 border-yellow-400" : "bg-white border-gray-300"
                                                         )}>
                                                             {isChecked && <CheckSquare size={12} className="text-white" />}
                                                         </div>
                                                         <div className="flex-1 min-w-0">
-                                                            <div className={clsx("text-xs font-semibold", isChecked ? "text-orange-700" : "text-gray-700")}>
+                                                            <div className={clsx("text-xs font-semibold", isChecked ? "text-yellow-600" : "text-gray-700")}>
                                                                 {p.id}
                                                             </div>
                                                             <div className="text-[10px] text-gray-400 truncate">
@@ -329,7 +329,7 @@ function RoleModal({ role, permissionsMap, userRole, onClose, onSuccess })
                     <button onClick={onClose} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-gray-700 text-xs font-semibold hover:bg-gray-100 transition shadow-sm">
                         Cancel
                     </button>
-                    <button onClick={handleSubmit} className="px-4 py-1.5 bg-orange-600 text-white text-xs font-bold rounded-md hover:bg-orange-700 shadow-sm transition active:scale-95">
+                    <button onClick={handleSubmit} className="px-4 py-1.5 bg-yellow-500 text-white text-xs font-bold rounded-md hover:bg-yellow-600 shadow-sm transition active:scale-95">
                         {isEdit ? "Save Changes" : "Create Role"}
                     </button>
                 </div>

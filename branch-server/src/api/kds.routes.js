@@ -1,22 +1,24 @@
 import express from "express";
 import { buildKdsView } from "../kds/kdsViewModel.js";
+import { requireAuth } from "../auth/authMiddleware.js";
 
 const router = express.Router();
 
+router.use(requireAuth);
+
 /**
  * GET /api/kds/view
- * Returns the full KDS view model
- * Safe to poll frequently
+ * Polling endpoint for the Kitchen Display Screen
  */
-router.get("/view", (req, res) =>
+router.get("/view", async (req, res) =>
 {
     try
     {
-        const view = buildKdsView();
+        const view = await buildKdsView(req.context.branchId);
         res.json(view);
     } catch (e)
     {
-        console.error("[KDS]", e);
+        console.error("[KDS Error]", e);
         res.status(500).json({ error: "Failed to build KDS view" });
     }
 });

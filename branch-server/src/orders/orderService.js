@@ -17,7 +17,8 @@ import
 {
     STAFF_ROLE, assertStaffRole
 } from "../staff/staffRoles.js";
-import { countItemsForOrder } from "./orderItemRepository.js";
+// 👇 IMPORT getItemsForOrder HERE
+import { countItemsForOrder, getItemsForOrder } from "./orderItemRepository.js";
 import { markTableOccupied, markTableFree, assertTableFree } from '../tables/tableService.js';
 
 /* ============================================================
@@ -37,16 +38,13 @@ async function getOrderOrThrow(orderId, branchId)
    CREATE
 ============================================================ */
 
-export async function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", customerName = null, customerPhone = null, branchId, actorId })
+export async function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", customerName = null, customerPhone = null, branchId, actorId, notes })
 {
     const now = Date.now();
     const orderId = crypto.randomUUID();
 
     if (!branchId) throw new Error("Branch ID is required");
     await assertBranchExists(branchId);
-
-    // 1. Security: Only Waiters, Captains, Managers, Owners can create orders
-    //await assertStaffRole(actorId, [STAFF_ROLE.WAITER, STAFF_ROLE.CAPTAIN, STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER]);
 
     // 2. Logic: Ensure Table is actually free
     await assertTableFree(tableId, branchId);
@@ -58,20 +56,19 @@ export async function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", 
         status: ORDER_STATUS.PLACED,
         servePolicy,
         createdAt: now,
+        notes: notes,
         updatedAt: now,
         customerName,
         customerPhone,
         branchId,
     };
 
-    // 3. DB Transaction (Implicit via async calls)
     await insertOrder(order);
     await markTableOccupied(tableId, branchId, actorId);
 
-    // 4. Log Event (Sync)
     await logOrderEvent({
         id: crypto.randomUUID(),
-        branchId, // ✅ SYNC: Critical
+        branchId,
         orderId,
         type: "CREATED",
         oldValue: null,
@@ -84,22 +81,23 @@ export async function createOrder({ tableId, waiterId, servePolicy = "PARTIAL", 
 }
 
 /* ============================================================
-   READ
+   READ (FIXED)
 ============================================================ */
 
 export async function getOrderById(orderId, branchId)
 {
-    // Security: branchId is mandatory to prevent cross-branch data leaks
     if (!branchId) throw new Error("Branch ID required");
 
     const order = await getOrderByIdRepo(orderId, branchId);
     if (!order) return null;
 
-    const itemCount = await countItemsForOrder(order.id);
+    // 👇 FIX: Fetch the actual list of items
+    const items = await getItemsForOrder(order.id);
 
     return {
         ...order,
-        itemCount
+        items, // <--- Front-end needs this array!
+        itemCount: items.length
     };
 }
 
@@ -109,7 +107,7 @@ export async function getActiveOrders(branchId)
 
     const orders = await getActiveOrdersRepo(branchId);
 
-    // Enrich with item counts (Parallel efficiency)
+    // Enrich with item counts
     const enrichedOrders = await Promise.all(orders.map(async (order) => ({
         ...order,
         itemCount: await countItemsForOrder(order.id)
@@ -120,8 +118,6 @@ export async function getActiveOrders(branchId)
 
 export async function getOrdersForTable(tableId, branchId)
 {
-    // Note: Usually we don't strictly need branchId if tableId is unique, 
-    // but strictly passing it is good security practice.
     const orders = await getOrdersForTableRepo(tableId);
 
     return Promise.all(orders.map(async (order) => ({
@@ -138,48 +134,37 @@ export async function changeOrderStatus({ orderId, newStatus, branchId, actorId 
 {
     await assertBranchExists(branchId);
 
-    // 1. Fetch Order
     const order = await getOrderOrThrow(orderId, branchId);
 
     if (order.status === newStatus) return order;
 
-    // 2. Security Checks
-    // - Managers/Owners can do anything.
-    // - Waiters/Captains can move PLACED -> PREPARING -> READY -> SERVED.
-    // - Kitchen (Chef) can move PLACED -> PREPARING -> READY.
-    // - Only Managers/Owners can CANCEL or COMPLETE (Payments).
     if ([ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED].includes(newStatus))
     {
         await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER, STAFF_ROLE.CAPTAIN]);
     } else
     {
-        // General staff check for other statuses
         await assertStaffRole(actorId, [
             STAFF_ROLE.WAITER, STAFF_ROLE.CAPTAIN,
             STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER, STAFF_ROLE.KITCHEN
         ]);
     }
 
-    // 3. Transition Validation
     const allowed = ALLOWED_TRANSITIONS[order.status];
     if (!allowed || !allowed.includes(newStatus))
     {
         throw new Error(`Invalid Order Transition: '${order.status}' -> '${newStatus}'`);
     }
 
-    // 4. Update DB
     await updateOrderStatus(orderId, newStatus);
 
-    // 5. Side Effects: Free Table if closing order
     if (newStatus === ORDER_STATUS.COMPLETED || newStatus === ORDER_STATUS.CANCELLED)
     {
         await markTableFree(order.tableId, branchId, actorId);
     }
 
-    // 6. Log
     await logOrderEvent({
         id: crypto.randomUUID(),
-        branchId, // ✅ SYNC
+        branchId,
         orderId,
         type: "STATUS_CHANGED",
         oldValue: order.status,
@@ -191,7 +176,6 @@ export async function changeOrderStatus({ orderId, newStatus, branchId, actorId 
     return { ...order, status: newStatus };
 }
 
-// Helper for re-assigning waiter
 export async function transferTable({ orderId, newWaiterId, branchId, actorId })
 {
     await assertStaffRole(actorId, [STAFF_ROLE.MANAGER, STAFF_ROLE.OWNER, STAFF_ROLE.CAPTAIN]);

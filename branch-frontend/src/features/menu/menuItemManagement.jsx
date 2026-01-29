@@ -176,7 +176,7 @@ export default function MenuItemManagement()
                 {/* Content Top */}
                 <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600">
+                        <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center text-yellow-500">
                             {getCategoryIcon(item.categoryName)}
                         </div>
                         <div>
@@ -201,7 +201,7 @@ export default function MenuItemManagement()
                 {/* Batch Info (If applicable) */}
                 {isBatch && (
                     <div className="mt-2 text-xs text-gray-500 flex-1">
-                        <div className="flex items-center gap-1 mb-1 text-orange-600 font-medium">
+                        <div className="flex items-center gap-1 mb-1 text-yellow-500 font-medium">
                             <MapPin size={12} />
                             <span>Active in {item.count} branches</span>
                         </div>
@@ -268,9 +268,9 @@ export default function MenuItemManagement()
                 <div className="flex items-center gap-3 w-full md:w-auto">
                     <div className="relative flex-1 md:w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                        <input type="text" placeholder="Search items..." className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <input type="text" placeholder="Search items..." className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-yellow-400 outline-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                     </div>
-                    <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-orange-600 text-white font-bold hover:bg-orange-700 shadow-md transition whitespace-nowrap"><Plus size={20} /> Add Item</button>
+                    <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-yellow-500 text-white font-bold hover:bg-yellow-600 shadow-md transition whitespace-nowrap"><Plus size={20} /> Add Item</button>
                 </div>
             </div>
 
@@ -481,8 +481,8 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                 </div>
 
                 <div className="flex border-b bg-gray-50/50">
-                    <button onClick={() => setTab('DETAILS')} className={clsx("flex-1 py-3 text-sm font-bold border-b-2 transition", tab === 'DETAILS' ? "border-orange-500 text-orange-600 bg-white" : "border-transparent text-gray-500")}>Details</button>
-                    <button onClick={() => setTab('RECIPE')} className={clsx("flex-1 py-3 text-sm font-bold border-b-2 transition", tab === 'RECIPE' ? "border-orange-500 text-orange-600 bg-white" : "border-transparent text-gray-500")}>Recipe</button>
+                    <button onClick={() => setTab('DETAILS')} className={clsx("flex-1 py-3 text-sm font-bold border-b-2 transition", tab === 'DETAILS' ? "border-yellow-400 text-yellow-500 bg-white" : "border-transparent text-gray-500")}>Details</button>
+                    <button onClick={() => setTab('RECIPE')} className={clsx("flex-1 py-3 text-sm font-bold border-b-2 transition", tab === 'RECIPE' ? "border-yellow-400 text-yellow-500 bg-white" : "border-transparent text-gray-500")}>Recipe</button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6">
@@ -498,11 +498,11 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Item Name</label>
-                                    <input required className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                    <input required className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Price ($)</label>
-                                    <input type="number" step="0.01" required className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} />
+                                    <input type="number" step="0.01" required className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} />
                                 </div>
                             </div>
 
@@ -510,7 +510,7 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Category</label>
                                     <select
-                                        className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-orange-500 outline-none"
+                                        className="w-full p-2 border rounded-lg bg-white focus:ring-2 focus:ring-yellow-400 outline-none"
                                         value={formData.categoryId || formData.categoryName}
                                         onChange={e =>
                                         {
@@ -528,7 +528,7 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Prep Time (min)</label>
-                                    <input type="number" className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" value={formData.prepTime} onChange={e => setFormData({ ...formData, prepTime: e.target.value })} />
+                                    <input type="number" className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none" value={formData.prepTime} onChange={e => setFormData({ ...formData, prepTime: e.target.value })} />
                                 </div>
                             </div>
 
@@ -543,7 +543,7 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                                                     {
                                                         if (selectedBranches.includes(b.id)) setSelectedBranches(prev => prev.filter(id => id !== b.id));
                                                         else setSelectedBranches(prev => [...prev, b.id]);
-                                                    }} className="text-orange-600 rounded focus:ring-orange-500" />
+                                                    }} className="text-yellow-500 rounded focus:ring-yellow-400" />
                                                     {b.name}
                                                 </label>
                                             ))}
@@ -557,14 +557,14 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                     {tab === 'RECIPE' && (
                         <div className="space-y-4">
                             {isEdit && mode === 'ITEM' && user.role === 'OWNER' && (
-                                <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded border border-orange-100 mb-2">
+                                <div className="text-xs text-yellow-500 bg-yellow-100 p-2 rounded border border-yellow-200 mb-2">
                                     Note: Editing the recipe here will <strong>overwrite</strong> the recipe for this item in all {item.count} branches.
                                 </div>
                             )}
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cooking Instructions</label>
                                 <textarea
-                                    className="w-full p-3 border rounded-lg h-24 text-sm focus:ring-2 focus:ring-orange-500 outline-none"
+                                    className="w-full p-3 border rounded-lg h-24 text-sm focus:ring-2 focus:ring-yellow-400 outline-none"
                                     placeholder="e.g. 1. Grill patty. 2. Toast buns..."
                                     value={formData.instructions}
                                     onChange={e => setFormData({ ...formData, instructions: e.target.value })}
@@ -574,7 +574,7 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                             <div>
                                 <div className="flex justify-between items-center mb-2">
                                     <label className="block text-xs font-bold text-gray-500 uppercase">Ingredients</label>
-                                    <button type="button" onClick={addIngredient} className="text-xs flex items-center gap-1 text-orange-600 font-bold hover:bg-orange-50 px-2 py-1 rounded transition">
+                                    <button type="button" onClick={addIngredient} className="text-xs flex items-center gap-1 text-yellow-500 font-bold hover:bg-yellow-100 px-2 py-1 rounded transition">
                                         <Plus size={14} /> Add Ingredient
                                     </button>
                                 </div>
@@ -583,10 +583,10 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
                                     {formData.ingredients.map((ing, idx) => (
                                         <div key={idx} className="flex gap-2 items-center">
                                             <div className="flex-1">
-                                                <input placeholder="Item (e.g. Beef)" className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none" value={ing.ingredient} onChange={e => updateIngredient(idx, 'ingredient', e.target.value)} />
+                                                <input placeholder="Item (e.g. Beef)" className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-yellow-400 outline-none" value={ing.ingredient} onChange={e => updateIngredient(idx, 'ingredient', e.target.value)} />
                                             </div>
                                             <div className="w-24">
-                                                <input placeholder="Qty" className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-orange-500 outline-none" value={ing.quantity} onChange={e => updateIngredient(idx, 'quantity', e.target.value)} />
+                                                <input placeholder="Qty" className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-yellow-400 outline-none" value={ing.quantity} onChange={e => updateIngredient(idx, 'quantity', e.target.value)} />
                                             </div>
                                             <button type="button" onClick={() => removeIngredient(idx)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"><Trash2 size={16} /></button>
                                         </div>
@@ -599,7 +599,7 @@ function ItemModal({ item, categories, mode, onClose, onSuccess })
 
                 <div className="p-6 border-t flex justify-end gap-3 bg-gray-50 rounded-b-xl">
                     <button onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-semibold hover:bg-gray-100 transition">Cancel</button>
-                    <button onClick={handleSubmit} className="px-6 py-2 bg-orange-600 text-white rounded-lg font-bold hover:bg-orange-700 shadow-md transition transform active:scale-95">
+                    <button onClick={handleSubmit} className="px-6 py-2 bg-yellow-500 text-white rounded-lg font-bold hover:bg-yellow-600 shadow-md transition transform active:scale-95">
                         {isEdit ? 'Save Changes' : 'Create Item'}
                     </button>
                 </div>

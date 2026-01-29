@@ -70,12 +70,12 @@
 .nav-item:hover {
     background: #f9fafb;
     color: #ea580c;
-    /* Orange Brand Color */
+    /* Yellow Brand Color */
 }
 
 .nav-item.active {
     background: #fff7ed;
-    /* Light Orange */
+    /* Light Yellow */
     color: #ea580c;
     font-weight: 600;
 }

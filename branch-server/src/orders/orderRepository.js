@@ -68,6 +68,7 @@ export async function insertOrder(order)
     serve_policy: order.servePolicy, // 'TOGETHER' or 'AS_READY'
     customer_name: order.customerName,
     customer_phone: order.customerPhone,
+    notes: order.notes,
     branch_id: order.branchId,
     created_at: order.createdAt,
     updated_at: order.updatedAt,

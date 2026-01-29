@@ -196,10 +196,9 @@ export async function changeStaffStatus({ staffId, branchId, newStatus, actorId 
     {
         throw new Error(`Invalid status change: '${staff.status}' -> '${newStatus}'`);
     }
-    console.log(staff.status, newStatus);
+
     // 4. Update
     await updateStaffStatus(staffId, branchId, newStatus);
-    console.log(staff.status, newStatus);
 
     // 5. Log
     await logStaffEvent({

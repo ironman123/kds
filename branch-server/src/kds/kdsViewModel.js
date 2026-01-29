@@ -1,5 +1,5 @@
 /**
- * @typedef {"GREEN"|"YELLOW"|"ORANGE"|"RED"} HeatState
+ * @typedef {"GREEN"|"YELLOW"|"YELLOW"|"RED"} HeatState
  */
 
 /**
@@ -33,94 +33,91 @@
 
 import db from "../db.js";
 
-function fetchRawKdsRows()
+async function fetchRawKdsRows(branchId)
 {
-    return db.prepare(`
-    SELECT
-      o.id AS order_id,
-      o.serve_policy,
-      o.created_at AS order_created_at,
-      -- o.notes AS order_note,
-
-      t.label AS table_label,
-
-      oi.id AS order_item_id,
-      oi.status AS item_status,
-      oi.quantity,
-      oi.started_at,
-      oi.completed_at,
-      oi.notes AS item_note,
-    -- oi.created_at AS item_created_at,
-
-      mi.name AS item_name,
-      mi.prep_time
-
-    FROM orders o
-    JOIN order_items oi ON oi.order_id = o.id
-    JOIN menu_items mi ON mi.id = oi.menu_item_id
-    JOIN tables t ON t.id = o.table_id
-
-    WHERE oi.status != 'COMPLETED'
-    ORDER BY o.created_at ASC
-  `).all();
+    return await db('orders as o')
+        .join('order_items as oi', 'oi.order_id', 'o.id')
+        .join('menu_items as mi', 'mi.id', 'oi.menu_item_id')
+        // Left join tables in case an order has no table (e.g. takeaway)
+        .leftJoin('tables as t', 't.id', 'o.table_id')
+        .select(
+            'o.id as order_id',
+            'o.serve_policy',
+            'o.created_at as order_created_at',
+            'o.notes as order_note',
+            't.label as table_label',
+            'oi.id as order_item_id',
+            'oi.status as item_status',
+            'oi.quantity',
+            'oi.started_at',
+            'oi.completed_at',
+            'oi.notes as item_note',
+            'mi.name as item_name',
+            'mi.prep_time'
+        )
+        // ✅ Fix 2: Filter by Branch!
+        .where('o.branch_id', branchId)
+        .whereNot('oi.status', 'COMPLETED')
+        .whereNot('oi.status', 'CANCELLED')
+        .orderBy('o.created_at', 'asc');
 }
 
-function computeLastProgressAt(order)
-{
-    const completed = order.items
-        .map(i => i.completedAt)
-        .filter(Boolean);
+// function computeLastProgressAt(order)
+// {
+//     const completed = order.items
+//         .map(i => i.completedAt)
+//         .filter(Boolean);
 
-    if (completed.length > 0)
-    {
-        return Math.max(...completed);
-    }
+//     if (completed.length > 0)
+//     {
+//         return Math.max(...completed);
+//     }
 
-    const started = order.items
-        .map(i => i.startedAt)
-        .filter(Boolean);
+//     const started = order.items
+//         .map(i => i.startedAt)
+//         .filter(Boolean);
 
-    if (started.length > 0)
-    {
-        return Math.min(...started);
-    }
+//     if (started.length > 0)
+//     {
+//         return Math.min(...started);
+//     }
 
-    return order.createdAt;
-}
+//     return order.createdAt;
+// }
 
-function groupByOrder(rows)
-{
-    const map = new Map();
+// function groupByOrder(rows)
+// {
+//     const map = new Map();
 
-    for (const r of rows)
-    {
-        if (!map.has(r.order_id))
-        {
-            map.set(r.order_id, {
-                orderId: r.order_id,
-                tableLabel: r.table_label,
-                servePolicy: r.serve_policy,
-                createdAt: r.order_created_at,
-                note: r.order_note,
-                items: [],
-            });
-        }
+//     for (const r of rows)
+//     {
+//         if (!map.has(r.order_id))
+//         {
+//             map.set(r.order_id, {
+//                 orderId: r.order_id,
+//                 tableLabel: r.table_label,
+//                 servePolicy: r.serve_policy,
+//                 createdAt: r.order_created_at,
+//                 note: r.order_note,
+//                 items: [],
+//             });
+//         }
 
-        map.get(r.order_id).items.push({
-            orderItemId: r.order_item_id,
-            name: r.item_name,
-            quantity: r.quantity,
-            status: r.item_status,
-            startedAt: r.started_at,
-            completedAt: r.completed_at,
-            prepTime: r.prep_time,
-            createdAt: r.item_created_at,
-            note: r.item_note,
-        });
-    }
+//         map.get(r.order_id).items.push({
+//             orderItemId: r.order_item_id,
+//             name: r.item_name,
+//             quantity: r.quantity,
+//             status: r.item_status,
+//             startedAt: r.started_at,
+//             completedAt: r.completed_at,
+//             prepTime: r.prep_time,
+//             createdAt: r.item_created_at,
+//             note: r.item_note,
+//         });
+//     }
 
-    return [...map.values()];
-}
+//     return [...map.values()];
+// }
 
 function computeWaitingBudget(order)
 {
@@ -132,18 +129,79 @@ function computeWaitingBudget(order)
 }
 
 
+// function computeHeat(now, lastProgressAt, budget)
+// {
+//     const ratio = (now - lastProgressAt) / budget;
+//     if (ratio < 0.5) return "GREEN";
+//     if (ratio < 0.8) return "YELLOW";
+//     if (ratio < 1.0) return "YELLOW";
+//     return "RED";
+// }
+
+function computeLastProgressAt(order)
+{
+    const completed = order.items.map(i => i.completedAt).filter(Boolean);
+    if (completed.length > 0) return Math.max(...completed);
+
+    const started = order.items.map(i => i.startedAt).filter(Boolean);
+    if (started.length > 0) return Math.min(...started);
+
+    return order.createdAt;
+}
+
+function groupByOrder(rows)
+{
+    const map = new Map();
+    for (const r of rows)
+    {
+        if (!map.has(r.order_id))
+        {
+            map.set(r.order_id, {
+                orderId: r.order_id,
+                tableLabel: r.table_label || 'Takeaway',
+                servePolicy: r.serve_policy,
+                createdAt: r.order_created_at,
+                note: r.order_note,
+                items: [],
+            });
+        }
+        map.get(r.order_id).items.push({
+            orderItemId: r.order_item_id,
+            name: r.item_name,
+            quantity: r.quantity,
+            status: r.item_status,
+            startedAt: r.started_at,
+            completedAt: r.completed_at,
+            prepTime: r.prep_time,
+            note: r.item_note,
+        });
+    }
+    return [...map.values()];
+}
+
+// function computeWaitingBudget(order)
+// {
+//     const totalPrep = order.items.map(i => i.prepTime || 0).reduce((a, b) => a + b, 0);
+//     // Budget is Prep Time + 5 mins buffer
+//     return Math.max(totalPrep * 60000 * 1.2, 5 * 60000);
+// }
+
 function computeHeat(now, lastProgressAt, budget)
 {
     const ratio = (now - lastProgressAt) / budget;
     if (ratio < 0.5) return "GREEN";
-    if (ratio < 0.8) return "YELLOW";
-    if (ratio < 1.0) return "ORANGE";
-    return "RED";
+    if (ratio < 0.8) return "YELLOW"; // Getting warm
+    if (ratio < 1.0) return "ORANGE"; // Urgent
+    return "RED"; // Overdue
 }
 
-export function buildKdsView()
+// ✅ Exported Builder
+export async function buildKdsView(branchId)
 {
-    const rows = fetchRawKdsRows();
+    if (!branchId) throw new Error("Branch ID missing for KDS view");
+
+    // Await the database call
+    const rows = await fetchRawKdsRows(branchId);
     const grouped = groupByOrder(rows);
     const now = Date.now();
 
@@ -155,9 +213,21 @@ export function buildKdsView()
             const budget = computeWaitingBudget(order);
             const heat = computeHeat(now, lastProgressAt, budget);
 
-            const blocking =
-                order.servePolicy === "ALL_AT_ONCE" &&
+            // Logic: An order is "Blocking" if policy is ALL_AT_ONCE and some items are ready but not all
+            const blocking = order.servePolicy === "ALL_AT_ONCE" &&
+                order.items.some(i => i.status === "READY") &&
                 order.items.some(i => i.status !== "READY");
+
+            // Logic: Determine overall Order Status for column placement
+            let overallStatus = 'PENDING';
+            const statusCounts = order.items.reduce((acc, i) =>
+            {
+                acc[i.status] = (acc[i.status] || 0) + 1;
+                return acc;
+            }, {});
+
+            if (statusCounts['READY'] === order.items.length) overallStatus = 'READY';
+            else if (statusCounts['PREPARING'] > 0 || statusCounts['READY'] > 0) overallStatus = 'PREPARING';
 
             return {
                 orderId: order.orderId,
@@ -167,21 +237,9 @@ export function buildKdsView()
                 pulse: heat === "RED" || blocking,
                 blocking,
                 note: order.note,
-                items: order.items.map(i => ({
-                    orderItemId: i.orderItemId,
-                    name: i.name,
-                    quantity: i.quantity,
-                    status: i.status,
-                    note: i.note,
-                    isBlocking:
-                        order.servePolicy === "ALL_AT_ONCE" && i.status !== "READY",
-                    hint:
-                        i.status === "PREPARING"
-                            ? "ACTIVE"
-                            : i.status === "PENDING" && heat !== "GREEN"
-                                ? "WAITING"
-                                : "NONE",
-                })),
+                status: overallStatus, // Used for column sorting
+                elapsedMins: Math.floor((now - order.createdAt) / 60000),
+                items: order.items
             };
         }),
     };

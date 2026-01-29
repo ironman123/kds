@@ -13,9 +13,9 @@ import TableManagement from './features/tables/TableManagement';
 import TableSelection from './features/orders/TableSelection';
 import CreateOrder from './features/orders/CreateOrder';
 import OrderInterface from './features/orders/OrderInterface';
+import KitchenDisplay from './features/kds/KitchenDisplay';
 
 // Placeholder Pages (We will replace 'OrderInterface' next)
-const KitchenDisplay = () => <h2>👨‍🍳 Kitchen View (KDS)</h2>;
 const Settings = () => <h2>⚙️ Settings</h2>;
 
 const ProtectedRoute = ({ children }) =>
@@ -46,6 +46,7 @@ export default function App()
           <Route index element={<OrderInterface />} />
           <Route path="role" element={<RoleManagement />} />
           <Route path="tables" element={<TableManagement />} />
+          <Route path="kds" element={<KitchenDisplay />} />
 
           // 1. Table Selection (Default for /orders)
           <Route path="orders" element={<TableSelection />} />

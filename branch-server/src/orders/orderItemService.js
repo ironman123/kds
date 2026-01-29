@@ -3,11 +3,13 @@ import
 {
     insertOrderItem,
     getOrderItemById,
-    updateOrderItemStatus
+    updateOrderItemStatus,
+    deleteOrderItemRepo
 } from "./orderItemRepository.js";
 import { ORDER_ITEM_STATUS } from "./orderItemStates.js";
 import { ALLOWED_ITEM_TRANSITIONS } from "./orderItemTransitions.js";
 import { logOrderItemEvent } from "./orderItemEventRepository.js";
+import { runInTransaction } from "../infra/transactionManager.js";
 
 import { deriveOrderState } from "./deriveOrderState.js";
 import
@@ -135,7 +137,7 @@ export async function changeOrderItemStatus({ itemId, newStatus, actorId, branch
         });
 
         // 8. 🔄 Derivation: Update Parent Order Status
-        const newOrderStatus = await deriveOrderState(item.orderId);
+        const newOrderStatus = await deriveOrderState(item.orderId, branchId);
 
         // Re-fetch order inside transaction to ensure we have latest state if needed
         const order = await getOrderByIdRepo(item.orderId, branchId);
@@ -174,4 +176,40 @@ export async function changeOrderItemStatus({ itemId, newStatus, actorId, branch
             }
         }
     });
+}
+
+export async function removeOrderItem({ itemId, branchId, actorId })
+{
+    // 1. Get Item
+    const item = await getOrderItemById(itemId);
+    if (!item) throw new Error("Item not found");
+
+    // 2. Validate Order ownership
+    const order = await getOrderByIdRepo(item.orderId, branchId);
+    if (!order) throw new Error("Order not found in this branch");
+
+    // 3. Logic: Only allow deleting PENDING items
+    // If it's already cooking, we shouldn't just delete it without tracking waste.
+    if (item.status !== ORDER_ITEM_STATUS.PENDING)
+    {
+        throw new Error("Cannot remove item that has already been sent to the kitchen.");
+    }
+
+    // 4. Soft Delete
+    await deleteOrderItemRepo(itemId);
+
+    // 5. Log Event
+    await logOrderItemEvent({
+        id: crypto.randomUUID(),
+        branchId,
+        orderId: item.orderId,
+        itemId,
+        type: "ITEM_REMOVED",
+        oldValue: JSON.stringify(item),
+        newValue: null,
+        actorId,
+        createdAt: Date.now()
+    });
+
+    return { ok: true };
 }

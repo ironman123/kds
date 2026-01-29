@@ -47,3 +47,8 @@ export const updateItemStatus = async (itemId, newStatus) =>
     const res = await api.patch(`/orders/items/${itemId}/status`, { newStatus });
     return res.data;
 };
+
+export const removeOrderItem = async (itemId) =>
+{
+    await api.delete(`/orders/items/${itemId}`);
+};

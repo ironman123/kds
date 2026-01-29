@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import
-    {
-        LayoutGrid, Plus, Trash2, Edit2, CheckCircle, XCircle, Clock
-    } from 'lucide-react';
+{
+    LayoutGrid, Plus, Trash2, Edit2, CheckCircle, XCircle, Clock
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import
-    {
-        listTables, createTable, updateTableStatus, renameTable, deleteTable
-    } from './tableService';
+{
+    listTables, createTable, updateTableStatus, renameTable, deleteTable
+} from './tableService';
 import useUserStore from '../../store/userStore';
 
 const TABLE_STATUS = {
@@ -126,14 +126,14 @@ export default function TableManagement()
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                        <LayoutGrid className="text-orange-600" /> Floor Plan
+                        <LayoutGrid className="text-yellow-500" /> Floor Plan
                     </h2>
                     <p className="text-gray-500 text-sm">Manage tables and their status</p>
                 </div>
 
                 <button
                     onClick={() => setIsCreating(true)}
-                    className="bg-orange-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-orange-700 transition shadow-md"
+                    className="bg-yellow-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-yellow-600 transition shadow-md"
                 >
                     <Plus size={20} /> Add Table
                 </button>
@@ -141,16 +141,16 @@ export default function TableManagement()
 
             {/* Create Modal / Inline Form */}
             {isCreating && (
-                <div className="mb-8 bg-white p-4 rounded-xl shadow-sm border border-orange-100 animate-in fade-in slide-in-from-top-4">
+                <div className="mb-8 bg-white p-4 rounded-xl shadow-sm border border-yellow-200 animate-in fade-in slide-in-from-top-4">
                     <form onSubmit={handleCreate} className="flex gap-3">
                         <input
                             autoFocus
                             placeholder="Enter table name (e.g. T-12, Patio-1)"
-                            className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                            className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
                             value={newTableName}
                             onChange={e => setNewTableName(e.target.value)}
                         />
-                        <button type="submit" className="bg-orange-600 text-white px-6 py-2 rounded-lg font-bold">Save</button>
+                        <button type="submit" className="bg-yellow-500 text-white px-6 py-2 rounded-lg font-bold">Save</button>
                         <button
                             type="button"
                             onClick={() => setIsCreating(false)}
